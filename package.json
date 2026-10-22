@@ -1,0 +1,18 @@
+{
+  "name": "feedforge",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "hôma product feed optimizer — Meta + GMC, regras, labels, AI e export para Google Sheets",
+  "scripts": {
+    "dev": "netlify dev",
+    "test": "node test/pipeline.test.mjs"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0",
+    "papaparse": "^5.4.1"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

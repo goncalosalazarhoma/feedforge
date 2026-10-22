@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>FeedForge · hôma</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%23222'/><text x='16' y='22' font-size='16' text-anchor='middle' fill='%23f4efe8' font-family='Arial' font-weight='700'>ff</text></svg>" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div id="login" class="login hidden">
+    <form id="login-form" class="login-card">
+      <div class="brand"><span class="logo">ff</span> FeedForge</div>
+      <p class="muted">Product feed optimizer · Meta &amp; Google Merchant Center</p>
+      <input type="password" id="login-pw" placeholder="Password" autocomplete="current-password" required />
+      <button class="btn primary" type="submit">Entrar</button>
+      <p id="login-err" class="err"></p>
+    </form>
+  </div>
+
+  <div id="app" class="app hidden">
+    <aside class="side">
+      <div class="brand"><span class="logo">ff</span> FeedForge</div>
+      <div class="feed-picker">
+        <select id="feed-select"></select>
+        <button class="btn ghost sm" id="new-feed" title="Novo feed">＋</button>
+      </div>
+      <nav id="nav">
+        <a data-view="dashboard">Dashboard</a>
+        <a data-view="products">Produtos</a>
+        <a data-view="rules">Regras</a>
+        <a data-view="labels">Labels</a>
+        <a data-view="fields">Campos &amp; locks</a>
+        <a data-view="ai">AI</a>
+        <a data-view="gmc">Conversão GMC</a>
+        <a data-view="settings">Definições</a>
+        <a data-view="history">Histórico</a>
+      </nav>
+      <div class="side-foot">
+        <div id="run-status" class="run-status"></div>
+        <button class="btn ghost sm" id="logout">Sair</button>
+      </div>
+    </aside>
+    <main id="main"></main>
+  </div>
+
+  <div id="drawer" class="drawer hidden"><div class="drawer-panel" id="drawer-panel"></div></div>
+  <div id="modal" class="modal hidden"><div class="modal-card" id="modal-card"></div></div>
+  <div id="toast" class="toast"></div>
+  <script src="/app.js"></script>
+  <script src="/views.js"></script>
+</body>
+</html>
