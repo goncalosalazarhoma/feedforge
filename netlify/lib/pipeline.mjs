@@ -220,8 +220,9 @@ export async function runFeed(feedId, { mode = "full", trigger = "manual", deadl
         const batches = [];
         for (let i = 0; i < take.length; i += 5) batches.push(take.slice(i, i + 5));
         let errors = 0;
+        let fatal = null; // invalid key / model: stop AI, don't penalise products
         await mapLimit(batches, 3, async (ids) => {
-          if (Date.now() > deadline - 90_000) return;
+          if (fatal || Date.now() > deadline - 90_000) return;
           const items = ids.filter((id) => byId.has(id)).map((id) => {
             const pre = processOne(byId.get(id), cfg, { ai: {}, overrides, state, today, rules: [] });
             return { row: byId.get(id), flags: checkQuality(pre.row, cfg.quality) };
@@ -237,6 +238,10 @@ export async function runFeed(feedId, { mode = "full", trigger = "manual", deadl
               }
             }
           } catch (e) {
+            if (e.fatal) {
+              if (!fatal) { fatal = e; step(`AI parada: ${e.message} — verifica ANTHROPIC_API_KEY / modelo. Os produtos continuam na fila.`); }
+              return;
+            }
             errors++;
             for (const id of ids) state.aiFails[id] = (state.aiFails[id] || 0) + 1;
             if (errors <= 3) step(`Erro AI: ${e.message}`);
@@ -244,7 +249,7 @@ export async function runFeed(feedId, { mode = "full", trigger = "manual", deadl
         });
         state.aiQueue =state.aiQueue.filter((id) => !generated[id] && (state.aiFails[id] || 0) < 3);
         Object.assign(ai, generated);
-        log.ai = { optimized: Object.keys(generated).length, remaining: state.aiQueue.length, errors };
+        log.ai = { optimized: Object.keys(generated).length, remaining: state.aiQueue.length, errors, fatal: fatal?.message };
         step(`AI: ${Object.keys(generated).length} produtos otimizados, ${state.aiQueue.length} em fila`);
       }
     }

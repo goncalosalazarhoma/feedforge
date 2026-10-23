@@ -70,7 +70,13 @@ export async function optimizeBatch(products, cfg, { idField = "id" } = {}) {
   for (let attempt = 0; attempt < 3; attempt++) {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
-      headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      headers: {
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+        // needed for org-level keys that are not scoped to a workspace
+        ...(process.env.ANTHROPIC_WORKSPACE_ID ? { "anthropic-workspace-id": process.env.ANTHROPIC_WORKSPACE_ID } : {}),
+      },
       body: JSON.stringify({
         model: process.env.AI_MODEL || cfg.ai.model || "claude-haiku-4-5",
         max_tokens: 1200 * products.length,
@@ -84,7 +90,15 @@ export async function optimizeBatch(products, cfg, { idField = "id" } = {}) {
       await new Promise((r) => setTimeout(r, 1500 * (attempt + 1) ** 2));
       continue;
     }
-    if (!res.ok) throw new Error(`Anthropic ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    if (!res.ok) {
+      const body = await res.text();
+      const err = new Error(`Anthropic ${res.status}: ${body.slice(0, 400)}`);
+      err.status = res.status;
+      // configuration problems (key, workspace, model, billing) — stop the AI step, never penalise products
+      err.fatal = [401, 403, 404].includes(res.status) ||
+        (res.status === 400 && /workspace|api key|api_key|model|credit|billing/i.test(body));
+      throw err;
+    }
     const data = await res.json();
     const text = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("");
     const parsed = extractJson(text);

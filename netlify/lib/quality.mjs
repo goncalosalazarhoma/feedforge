@@ -1,6 +1,6 @@
 // Detects sub-optimised fields. Flags drive which NEW products go to the AI.
 
-const PROMO = /(gr[aá]tis|portes|envio gratuito|free shipping|promo[cç][aã]o|promoci[oó]n|desconto|descuento|oferta|sale\b|\d+\s?%|compre j[aá]|compra ya|best seller|novidade!|!!)/i;
+const PROMO = /(\bgr[aá]tis\b|\bportes\b|envio gratuito|free shipping|\bpromo[cç][aã]o\b|\bpromoci[oó]n\b|\bdesconto\b|\bdescuento\b|\bem oferta\b|\boferta especial\b|\bsale\b|\d+\s?%|compre j[aá]|compra ya|best seller|!!)/i;
 const HTML = /<\/?[a-z][^>]*>|&nbsp;|&amp;/i;
 
 function isShouting(s) {
