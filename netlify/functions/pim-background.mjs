@@ -4,6 +4,24 @@ import { authorized } from "../lib/http.mjs";
 import { mapLimit } from "../lib/util.mjs";
 import { PK, getPimConfig, columnFor, isEditable, diagnose, productFacts, campaignText, optimizeProducts, cleanAi, refreshMeta, getDictionary, fieldsFor } from "../lib/pim.mjs";
 
+const nums = (s) => (String(s || "").match(/\d+(?:[.,]\d+)?/g) || []).map((x) => Number(x.replace(",", "."))).sort((a, b) => a - b).join("|");
+// Guardrails: the AI must not change facts stated in the original name
+function guard(attr, loc, value, row, cfg, dict) {
+  if (!["ATT_NAME", "ATT_PLP_NAME"].includes(attr)) return null;
+  const orig = row[`ATT_NAME-${cfg.sourceLocale}-${cfg.channel}`] || "";
+  const on = nums(orig), nn = nums(value);
+  if (attr === "ATT_NAME" && on && nn !== on) return `Medidas diferentes do nome original ("${orig}")`;
+  if (attr === "ATT_PLP_NAME" && nn && on && !on.includes(nn.split("|")[0])) return `Medidas diferentes do nome original ("${orig}")`;
+  if (loc === cfg.sourceLocale) {
+    const low = (x) => x.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const mats = Object.values(dict?.options?.ATT_MATERIAL || {}).map((o) => low(o.pt_PT)).filter((m) => m.length > 3);
+    const lost = mats.filter((m) => new RegExp(`\\b${m}\\b`).test(low(orig)) && !new RegExp(`\\b${m}\\b`).test(low(value)));
+    const argila = /argila|barro|ceramica|madeira|bambu|vidro|metal|algodao|linho|veludo/.exec(low(orig));
+    if (lost.length || (argila && !low(value).includes(argila[0]))) return `Material do nome original alterado ("${orig}")`;
+  }
+  return null;
+}
+
 export async function runPimJob(id, { deadline = Date.now() + 13.5 * 60 * 1000 } = {}) {
   const lock = await db.get(PK.lock(id));
   if (lock && Date.now() - lock.at < 16 * 60 * 1000) return { skipped: true };
@@ -24,8 +42,10 @@ export async function runPimJob(id, { deadline = Date.now() + 13.5 * 60 * 1000 }
         for (const [col, value] of Object.entries(fields)) {
           // never overwrite something the user already accepted or edited
           const prev = cur.fields[col];
-          if (prev && (prev.status === "accepted" || prev.source === "manual" || prev.source === "ai+edit")) continue;
-          cur.fields[col] = { value, source: "ai", status: "pending" };
+          if (prev && (prev.source === "manual" || prev.source === "ai+edit")) continue;
+          if (prev && prev.status === "accepted" && !meta.redo) continue;
+          const v = typeof value === "object" ? value : { value };
+          cur.fields[col] = { value: v.value, source: "ai", status: "pending", ...(v.warning ? { warning: v.warning } : {}) };
         }
         results[sku] = { ...cur, at: new Date().toISOString() };
         delete generated[sku];
@@ -57,7 +77,11 @@ export async function runPimJob(id, { deadline = Date.now() + 13.5 * 60 * 1000 }
             for (const attr of fieldsFor(loc, cfg)) {
               const v = per?.[loc]?.[attr];
               const col = columnFor(data.headers, attr, loc, cfg.channel);
-              if (v && isEditable(col, cfg)) out[col] = cleanAi(attr, v, cfg);
+              if (v && isEditable(col, cfg)) {
+                const clean = cleanAi(attr, v, cfg);
+                const warning = guard(attr, loc, clean, bySku.get(sku), cfg, dict);
+                out[col] = warning ? { value: clean, warning } : clean;
+              }
             }
           }
           generated[sku] = out;

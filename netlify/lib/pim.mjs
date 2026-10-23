@@ -211,12 +211,23 @@ export function productFacts(row, dict, cfg) {
     led: row.ATT_LED === "1" ? "sim" : "",
     exterior: row.ATT_OUTDOOR === "1" ? "sim" : "",
     sazonal: isSeasonal(row, cfg),
+    dimensoes_suspeitas: suspiciousDims(row),
   };
   // numeric option codes without dictionary are meaningless to the AI
   for (const k of ["cor", "cores", "material", "estilo", "aroma"]) if (/^\d+$/.test(facts[k] || "")) facts[k] = "";
   if (facts.cores === facts.cor) facts.cores = "";
   if (!facts.rotulos_es.cor && !facts.rotulos_es.material) delete facts.rotulos_es;
   return Object.fromEntries(Object.entries(facts).filter(([, v]) => v !== "" && v != null && v !== false));
+}
+
+export function suspiciousDims(row) {
+  const L = num(row.ATT_ARTICLE_DIMENSION_LENGHT), W = num(row.ATT_ARTICLE_DIMENSION_WIDE), H = num(row.ATT_ARTICLE_DIMENSION_HEIGHT);
+  const flat = /TEXTILE|MATTRESSES|RUG|CARPET|FRAMES/.test(row.family || "");
+  if (flat && W && H && (W === H || L === H) && H > 15) return true;          // e.g. tablecloth 240x140x140, cushion 59x59x59
+  const name = String(row["ATT_NAME-pt_PT-ecommerce"] || "");
+  const m = name.match(/(\d+(?:[.,]\d+)?)\s*x\s*(\d+(?:[.,]\d+)?)/i);
+  if (m && L && W) { const a = [Number(m[1].replace(",", ".")), Number(m[2].replace(",", "."))].sort((x, y) => x - y); const b = [L, W].sort((x, y) => x - y); if (a[0] !== b[0] || a[1] !== b[1]) return true; } // name says 60x90, attributes 90x90
+  return false;
 }
 
 // ---------------------------------------------------------------------------- diagnosis
@@ -298,6 +309,11 @@ Regras:
 - Usa APENAS os factos fornecidos (nome, descrição atual, descrição do fornecedor, atributos). Nunca inventes medidas, materiais, cores, certificações ou utilizações improváveis.
 - ATT_NAME até ${cfg.limits.ATT_NAME} caracteres; ATT_PLP_NAME até ${cfg.limits.ATT_PLP_NAME}; ATT_SHORT_DESCRIPTION até ${cfg.limits.ATT_SHORT_DESCRIPTION}; ATT_LONG_DESCRIPTION entre ${cfg.limits.longMin} e ${cfg.limits.longMax} caracteres.
 - Em ES usa os "rotulos_es" para cor e material quando existirem.
+- O NOME ATUAL É A FONTE DE VERDADE para medidas, material e cor. Nunca alteres medidas, material ou cor que já estejam no nome atual, mesmo que os atributos digam outra coisa (os atributos às vezes estão errados). Podes acrescentar informação que falte, nunca substituir.
+- Se "dimensoes_suspeitas" for true, usa as medidas do nome atual na linha de especificações; se o nome não tiver medidas, omite "Dimensão".
+- Não inventes qualidades ou características (natural, artesanal, macio, resistente às intempéries, etc.) que não estejam nos dados.
+- Português europeu sem anglicismos (nada de "storage", "design" quando há equivalente simples, etc.).
+- ES: tradução completa, nenhuma palavra em português. Glossário obrigatório: tapete→alfombra; almofada decorativa→cojín; almofada de cama/travesseiro→almohada; candeeiro→lámpara; vaso para plantas→maceta; vaso/jarra decorativa→jarrón; toalha de mesa→mantel; toalha de banho→toalla; roupeiro→armario; coroa→corona; cesto→cesta; caixa→caja; prateado→plateado; dourado→dorado; saboneteira→jabonera; coador→colador; tapete de banho→alfombra de baño.
 - Remove textos genéricos de marketing ("Sabia que…", "Conheça a nossa gama…"). Se "sazonal" for true e existir "texto_campanha", termina a descrição com esse texto (traduzido no ES); se sazonal for false, não incluas texto de campanha.
 - Sem HTML, emojis, preços, promoções ou MAIÚSCULAS integrais. Referências de coleção/marca mantêm-se como no original.
 - Gera para cada língua pedida: ${locales.map((l) => `${l} = ${LANG[l] || l}`).join("; ")}. O ES é uma adaptação natural, não tradução literal.
@@ -347,6 +363,7 @@ export function buildIndex(rows, headers, cfg, dict, results = {}) {
     const flags = diagnose(r, headers, cfg, dict);
     const res = results[r.sku]?.fields || {};
     const vals = Object.values(res);
+    const content = vals.filter((v) => v.source !== "fix");
     return {
       sku: r.sku,
       name: r[`ATT_NAME-${cfg.sourceLocale}-${cfg.channel}`] || r[`ATT_LABEL-${cfg.sourceLocale}`] || "",
@@ -355,7 +372,8 @@ export function buildIndex(rows, headers, cfg, dict, results = {}) {
       seasonal: isSeasonal(r, cfg),
       flags: flags.map((f) => `${f.field}:${f.code}`),
       errors: flags.filter((f) => f.severity === "error").length,
-      suggested: vals.length,
+      suggested: content.length,
+      warnings: vals.filter((v) => v.warning && v.status !== "accepted").length,
       accepted: vals.filter((v) => v.status === "accepted").length,
       pending: vals.filter((v) => v.status === "pending").length,
     };

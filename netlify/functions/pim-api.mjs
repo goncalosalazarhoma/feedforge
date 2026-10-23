@@ -113,6 +113,7 @@ route("GET", "/jobs/:id/products", async ({ id, query }) => {
   if (q) items = items.filter((i) => i.sku.toLowerCase().includes(q) || i.name.toLowerCase().includes(q));
   const f = query.get("filter");
   if (f === "errors") items = items.filter((i) => i.errors);
+  if (f === "warnings") items = items.filter((i) => i.warnings);
   if (f === "pending") items = items.filter((i) => i.pending);
   if (f === "accepted") items = items.filter((i) => i.accepted);
   if (f === "todo") items = items.filter((i) => !i.suggested);
@@ -170,6 +171,7 @@ route("POST", "/jobs/:id/bulk", async ({ id, body }) => {
     for (const [col, v] of Object.entries(r.fields)) {
       if (body.cols?.length && !body.cols.includes(parseColumn(col).attr)) continue;
       if (body.action === "reset") { delete r.fields[col]; n++; continue; }
+      if (body.action === "accept" && v.warning && !body.force) continue; // fields with guardrail warnings need a human look
       if (v.status === "pending" || body.force) { v.status = body.action === "accept" ? "accepted" : "rejected"; n++; }
     }
   }
@@ -188,6 +190,7 @@ route("POST", "/jobs/:id/run", async ({ id, body, req }) => {
     skus = (body.scope === "all" ? idx : idx.filter((i) => i.flags.some((f) => !f.startsWith("_")))).filter((i) => body.redo || !i.suggested).map((i) => i.sku);
   }
   meta.queue = skus;
+  meta.redo = !!body.redo;
   meta.progress = { done: 0, total: skus.length, errors: 0, startedAt: new Date().toISOString() };
   await db.set(PK.job(id), meta);
   const res = await fetch(`${new URL(req.url).origin}/.netlify/functions/pim-background`, {

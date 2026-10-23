@@ -109,6 +109,7 @@
         <div class="row">
           <button class="btn" id="pim-run" ${j.running ? "disabled" : ""}>Otimizar sinalizados com AI</button>
           <button class="btn" id="pim-run-all" ${j.running ? "disabled" : ""}>Otimizar todos</button>
+          <button class="btn" id="pim-redo" ${j.running ? "disabled" : ""} title="Volta a gerar com AI todos os produtos, substituindo sugestões AI já aceites (as tuas edições manuais mantêm-se)">Refazer AI</button>
           <button class="btn" id="pim-accept">Aceitar todas as pendentes</button>
           <button class="btn primary" id="pim-export">⬇ Exportar XLSX</button>
         </div>
@@ -123,7 +124,7 @@
       <div class="card">
         <div class="row" style="margin-bottom:10px">
           <input id="pim-q" placeholder="Pesquisar sku ou nome…" value="${esc(P.list.q)}" style="min-width:240px" />
-          <div class="chips">${[["", "Todos"], ["errors", "Com erros"], ["todo", "Sem sugestão"], ["pending", "Por rever"], ["accepted", "Aceites"], ["seasonal", "Sazonais"]].map(([k, l]) => `<span class="chip ${P.list.filter === k && !P.list.flag ? "on" : ""}" data-f="${k}">${l}</span>`).join("")}
+          <div class="chips">${[["", "Todos"], ["warnings", "⚠ A verificar"], ["errors", "Com erros"], ["todo", "Sem sugestão"], ["pending", "Por rever"], ["accepted", "Aceites"], ["seasonal", "Sazonais"]].map(([k, l]) => `<span class="chip ${P.list.filter === k && !P.list.flag ? "on" : ""}" data-f="${k}">${l}</span>`).join("")}
           ${P.list.flag ? `<span class="chip on" data-f="">${esc(flagLabel(P.list.flag))} ✕</span>` : ""}</div>
         </div>
         <div id="pim-list"></div>
@@ -131,6 +132,7 @@
     $("#pim-back").onclick = (e) => { e.preventDefault(); P.jobId = null; drawFiles(box); };
     $("#pim-run").onclick = (e) => run("flagged", e.target);
     $("#pim-run-all").onclick = (e) => run("all", e.target);
+    $("#pim-redo").onclick = (e) => { if (confirm("Voltar a gerar com AI todos os produtos? Sugestões AI já aceites são substituídas (edições manuais mantêm-se).")) run("all", e.target, true); };
     $("#pim-accept").onclick = (e) => guard(async () => { const r = await papi(`/jobs/${P.jobId}/bulk`, { method: "POST", body: { action: "accept" } }); toast(`${r.changed} sugestões aceites`); drawJob(box); }, e.target);
     $("#pim-export").onclick = (e) => guard(() => exportXlsx(), e.target);
     $$("[data-flag]", box).forEach((tr) => (tr.onclick = () => { P.list = { ...P.list, flag: tr.dataset.flag, filter: "", page: 1 }; drawJob(box); }));
@@ -141,9 +143,9 @@
     if (j.running) P.poll = setTimeout(() => { if (S.view === "pim" && P.jobId === j.id) drawJob(box); }, 6000);
   }
 
-  async function run(scope, btn) {
+  async function run(scope, btn, redo = false) {
     await guard(async () => {
-      const r = await papi(`/jobs/${P.jobId}/run`, { method: "POST", body: { scope } });
+      const r = await papi(`/jobs/${P.jobId}/run`, { method: "POST", body: { scope, redo } });
       if (!r.queued) return toast("Nada para otimizar (todos já têm sugestão)");
       toast(`${r.queued} produtos enviados para a AI`);
       setTimeout(() => drawJob($("#pim-body")), 1500);
@@ -176,7 +178,7 @@
       ${r.items.map((i) => `<tr class="click" data-sku="${esc(i.sku)}"><td class="mono">${esc(i.sku)}</td><td><div class="trunc">${esc(i.name)}</div></td><td class="small muted">${esc(i.family.replace(/^FAM_/, ""))}</td>
         <td class="small">${i.completeness ?? "—"}%</td>
         <td>${i.flags.filter((f) => !f.includes(":missing_es") && !f.startsWith("_completeness")).slice(0, 3).map((f) => `<span class="badge flag">${esc(flagLabel(f))}</span>`).join("")}${i.seasonal ? `<span class="badge ai">sazonal</span>` : ""}</td>
-        <td>${i.suggested ? `${i.pending ? `<span class="badge edit">${i.pending} por rever</span>` : ""}${i.accepted ? `<span class="badge new">${i.accepted} aceites</span>` : ""}` : `<span class="muted small">—</span>`}</td></tr>`).join("")}</table>
+        <td>${i.warnings ? `<span class="badge ex">⚠ ${i.warnings}</span>` : ""}${i.suggested ? `${i.pending ? `<span class="badge edit">${i.pending} por rever</span>` : ""}${i.accepted ? `<span class="badge new">${i.accepted} aceites</span>` : ""}` : `<span class="muted small">—</span>`}</td></tr>`).join("")}</table>
       <div class="pager"><span class="muted">${r.total} produtos · página ${r.page}/${pages}</span><button class="btn sm" id="pp" ${r.page <= 1 ? "disabled" : ""}>←</button><button class="btn sm" id="pn" ${r.page >= pages ? "disabled" : ""}>→</button></div>`;
     $$("tr[data-sku]", box).forEach((tr) => (tr.onclick = () => openSku(tr.dataset.sku)));
     $("#pp").onclick = () => { P.list.page--; drawList(); };
@@ -199,6 +201,7 @@
         const s = f.suggestion;
         return `<div class="card" data-col="${esc(f.col)}">
           <div class="row"><b class="mono">${esc(f.col)}</b>${f.editable ? "" : `<span class="badge lock">🔒 trancado</span>`}<span class="grow"></span>
+            ${s?.warning ? `<span class="badge ex" title="${esc(s.warning)}">⚠ ${esc(s.warning)}</span>` : ""}
             ${s ? `<span class="badge ${s.status === "accepted" ? "new" : s.status === "rejected" ? "ex" : "edit"}">${s.status === "accepted" ? "aceite" : s.status === "rejected" ? "rejeitada" : "por rever"}</span><span class="badge ${s.source === "ai" ? "ai" : ""}">${esc(s.source)}</span>` : ""}</div>
           <div class="grid two" style="margin-top:8px">
             <div><div class="small muted">Atual</div><div class="small" style="white-space:pre-wrap">${esc(f.current) || "<i class='muted'>vazio</i>"}</div></div>
