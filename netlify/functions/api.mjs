@@ -207,6 +207,12 @@ route("POST", "/feeds/:f/ai-requests", async ({ f, body }) => {
     await db.set(K.ai(f), all);
   }
   await db.set(K.aiRequests(f), next);
+  // give these products a fresh set of AI attempts
+  const state = await db.get(K.state(f));
+  if (state?.aiFails) {
+    for (const id of ids) delete state.aiFails[id];
+    await db.set(K.state(f), state);
+  }
   return { queued: next.length };
 });
 
