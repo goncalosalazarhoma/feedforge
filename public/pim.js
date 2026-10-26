@@ -134,8 +134,8 @@
       <div class="card"><h2>Categorias</h2>
         ${(() => { const cf = Object.entries(j.flagCount || {}).filter(([k]) => k.startsWith("_categories:")); return cf.length ? `<div class="chips" style="margin-bottom:10px">${cf.map(([k, n]) => `<span class="chip" data-flag="${esc(k)}">${esc(flagLabel(k))} · <b>${n}</b></span>`).join("")}</div>` : `<p class="muted">Sem problemas de categorização detetados.</p>`; })()}
         <p class="muted small">Correções automáticas (categoria-mãe em falta, Natal, faixa de preço vs PVP) aparecem já como propostas. A AI propõe a categoria final certa e remove as erradas, usando só códigos existentes. Os códigos ERP (numéricos) nunca são alterados. As categorias não são aceites em bloco com o resto.</p>
-        <div class="row"><button class="btn" id="pim-cat-run" ${j.running ? "disabled" : ""}>Propor re-categorização (AI)</button><button class="btn" id="pim-cat-accept">Aceitar categorias propostas</button>
-        ${j.progress?.mode === "categories" ? `<span class="muted small">Última proposta: ${j.progress.changed ?? 0} produtos com alterações · ${fmtDate(j.progress.finishedAt)}</span>` : ""}</div>
+        <div class="row"><button class="btn" id="pim-cat-run" ${j.running ? "disabled" : ""}>Propor re-categorização (AI)</button><button class="btn primary" id="pim-cat-review">Rever propostas de categorias</button><button class="btn" id="pim-cat-accept">Aceitar categorias propostas</button><button class="btn" id="pim-cat-export" title="SKU · Nome · Categorias anteriores · Categorias propostas (só propostas aceites)">⬇ Exportar recategorização</button>
+        ${j.progress?.mode === "categories" ? `<span class="muted small">Última proposta: ${j.progress.changed ?? 0} com alterações · ${j.progress.kept ?? 0} mantidas com justificação${j.progress.noAnswer ? ` · ${j.progress.noAnswer} sem resposta` : ""} · ${fmtDate(j.progress.finishedAt)}</span>` : ""}</div>
       </div>
       <div class="card">
         <div class="row" style="margin-bottom:10px">
@@ -151,12 +151,23 @@
     $("#pim-redo").onclick = async (e) => { if (await ask("Voltar a gerar com AI todos os produtos? As sugestões AI já aceites são substituídas; as tuas edições manuais mantêm-se.", { ok: "Refazer AI" })) run("all", e.target, true); };
     $("#pim-accept").onclick = (e) => guard(async () => { const r = await papi(`/jobs/${P.jobId}/bulk`, { method: "POST", body: { action: "accept" } }); toast(`${r.changed} sugestões aceites`); drawJob(box); }, e.target);
     $("#pim-export").onclick = (e) => guard(() => exportXlsx(false), e.target);
+    $("#pim-cat-export").onclick = (e) => guard(async () => {
+      const r = await papi(`/jobs/${P.jobId}/categories-export`);
+      if (!r.rows.length) return toast("Ainda não há propostas de categorias aceites para exportar", true);
+      const ws = XLSX.utils.aoa_to_sheet([r.headers, ...r.rows.map((row) => r.headers.map((h) => row[h] ?? ""))]);
+      ws["!cols"] = [{ wch: 12 }, { wch: 50 }, { wch: 80 }, { wch: 80 }];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Recategorização");
+      XLSX.writeFile(wb, `${P.job.name}-recategorizacao.xlsx`);
+      toast(`${r.rows.length} produtos recategorizados exportados`);
+    }, e.target);
     $("#pim-export-full").onclick = (e) => guard(() => exportXlsx(true), e.target);
     $$("[data-flag]", box).forEach((tr) => (tr.onclick = () => { P.list = { ...P.list, flag: tr.dataset.flag, filter: "", page: 1 }; drawJob(box); }));
     $$("[data-f]", box).forEach((c) => (c.onclick = () => { P.list = { ...P.list, filter: c.dataset.f, flag: "", page: 1 }; drawJob(box); }));
     let t; $("#pim-q").oninput = (e) => { clearTimeout(t); t = setTimeout(() => { P.list.q = e.target.value; P.list.page = 1; drawList(); }, 250); };
     $("#pim-cat-run").onclick = (e) => guard(async () => { const r = await papi(`/jobs/${P.jobId}/run`, { method: "POST", body: { mode: "categories" } }); toast(r.queued ? `${r.queued} produtos enviados para re-categorização` : "Nenhum produto com problemas de categoria"); setTimeout(() => drawJob(box), 4000); }, e.target);
     $("#pim-cat-accept").onclick = async (e) => { if (await ask("Aceitar todas as propostas de categorias pendentes? Revê primeiro algumas no detalhe do produto.", { ok: "Aceitar categorias" })) guard(async () => { const r = await papi(`/jobs/${P.jobId}/bulk`, { method: "POST", body: { action: "accept", cols: ["categories"] } }); toast(`${r.changed} propostas de categoria aceites`); drawJob(box); }, e.target); };
+    $("#pim-cat-review").onclick = () => reviewCategories();
     $("#pim-auto").onclick = (e) => guard(async () => { const r = await papi(`/jobs/${P.jobId}/auto`, { method: "POST" }); toast(`${r.fixes} deduções · ${r.labels} labels`); drawJob(box); }, e.target);
     drawImages();
     drawList();
@@ -185,6 +196,36 @@
       <button class="btn sm" id="pim-img-run" style="margin-top:8px">${s ? "Reavaliar imagens" : "Avaliar imagens"}</button>`;
     $$("tr[data-sku]", box).forEach((tr) => (tr.onclick = () => openSku(tr.dataset.sku)));
     $("#pim-img-run").onclick = (e) => guard(async () => { await papi(`/jobs/${P.jobId}/images`, { method: "POST" }); toast("A avaliar imagens (1–3 min)…"); setTimeout(drawImages, 45000); }, e.target);
+  }
+
+  async function reviewCategories() {
+    const panel = $("#drawer-panel");
+    panel.innerHTML = `<div class="empty">A carregar…</div>`;
+    $("#drawer").classList.remove("hidden");
+    const { items } = await papi(`/jobs/${P.jobId}/categories`);
+    const filter = P.catFilter || "pending";
+    const list = items.filter((i) => filter === "all" || i.status === filter);
+    const chip = (k, l) => `<span class="chip ${filter === k ? "on" : ""}" data-cf="${k}">${l} · ${k === "all" ? items.length : items.filter((i) => i.status === k).length}</span>`;
+    panel.innerHTML = `
+      <div class="head"><div><h1>Propostas de categorias</h1><div class="muted">Verde = adicionar · vermelho riscado = remover · os códigos ERP nunca mudam.</div></div>
+        <div class="row"><button class="btn" id="cr-close">Fechar</button></div></div>
+      <div class="chips" style="margin-bottom:12px">${chip("pending", "Por rever")}${chip("kept", "Mantidas (com justificação)")}${chip("none", "Sem análise")}${chip("accepted", "Aceites")}${chip("rejected", "Rejeitadas")}${chip("all", "Todas")}</div>
+      ${list.length ? `<div class="card" style="padding:0"><table>
+        <tr><th>Produto</th><th>Categorias atuais → proposta</th><th>Motivo</th><th></th></tr>
+        ${list.map((i) => `<tr data-sku="${esc(i.sku)}">
+          <td style="min-width:200px"><div class="mono small muted">${esc(i.sku)} · ${esc(i.family.replace(/^FAM_/, ""))}</div><div>${esc(i.name)}</div></td>
+          <td>${i.flags?.length ? `<div class="small" style="color:var(--warn,#b26b00);margin-bottom:4px">⚠ ${i.flags.map(esc).join(" · ")}</div>` : ""}${i.current.map((c) => `<span class="badge${i.remove.some((r) => r.code === c.code) ? " ex" : ""}" style="${i.remove.some((r) => r.code === c.code) ? "text-decoration:line-through" : ""}">${esc(c.label)}</span>`).join(" ") || `<span class="muted small">sem categoria</span>`}
+            ${i.add.map((c) => `<span class="badge new">＋ ${esc(c.label)}</span>`).join(" ")}</td>
+          <td class="small muted" style="max-width:280px">${i.status === "kept" ? "<b>AI manteve:</b> " : ""}${esc(i.reason)}${i.aiView ? `<div style="margin-top:4px"><b>Visão da AI:</b> ${esc(i.aiView)}</div>` : ""} ${i.source ? `<span class="badge">${i.source === "ai" ? "AI" : "regra"}</span>` : ""}</td>
+          <td style="white-space:nowrap">${i.status === "kept" ? `<span class="badge">mantida</span>` : i.status === "none" ? `<span class="muted small">—</span>` : i.status === "pending" ? `<button class="btn sm primary" data-st="accepted">Aceitar</button> <button class="btn sm" data-st="rejected">Rejeitar</button>` : `<span class="badge ${i.status === "accepted" ? "new" : "ex"}">${i.status === "accepted" ? "aceite" : "rejeitada"}</span> <button class="btn sm ghost" data-st="pending">↺</button>`}</td>
+        </tr>`).join("")}</table></div>` : `<div class="card empty">Nada nesta vista.</div>`}`;
+    $("#cr-close").onclick = () => { $("#drawer").classList.add("hidden"); drawJob($("#pim-body")); };
+    $$("[data-cf]", panel).forEach((c) => (c.onclick = () => { P.catFilter = c.dataset.cf; reviewCategories(); }));
+    $$("tr[data-sku] [data-st]", panel).forEach((b) => (b.onclick = () => guard(async () => {
+      const sku = b.closest("tr").dataset.sku;
+      await papi(`/jobs/${P.jobId}/categories/${encodeURIComponent(sku)}`, { method: "POST", body: { status: b.dataset.st } });
+      reviewCategories();
+    })));
   }
 
   async function run(scope, btn, redo = false) {
@@ -248,8 +289,9 @@
         <div class="small muted" style="margin-bottom:6px">${d.images.product.effective} foto(s) de produto${d.images.product.duplicated ? ` (${d.images.product.raw} códigos)` : ""} · ${d.images.ambiance.effective} de ambiente${d.images.issues.length ? " · " + esc(d.images.issues.join(" · ")) : ""}</div>
         <div class="row">${d.images.feedImages.map((im) => `<div style="text-align:center"><img src="${esc(im.url)}" style="width:96px;height:96px;object-fit:cover;border-radius:6px;background:var(--soft)" loading="lazy" onerror="this.style.opacity=.2"/><div class="small muted">${im.w ? `${im.w}×${im.h}` : esc(im.error || "")}${im.kb ? ` · ${im.kb} KB` : ""}</div></div>`).join("")}</div></div>` : ""}
       ${d.categories ? `<div class="card" style="margin-bottom:12px"><h2>Categorias</h2>
+        ${d.categories.flags?.length ? `<div class="small" style="color:var(--warn,#b26b00);margin-bottom:6px">${d.categories.flags.map((f) => `⚠ ${esc(f.msg)}`).join("<br>")}</div>` : ""}
         <div class="small">${d.categories.current.filter((c) => c.ecom).map((c) => `<span class="badge${d.categories.suggestion?.remove.some((x) => x.code === c.code) ? " ex" : ""}">${esc(c.label)}</span>`).join(" ") || `<span class="muted">sem categoria ecommerce</span>`}</div>
-        ${d.categories.suggestion ? `<div style="margin-top:8px" class="small">Proposta (${esc(d.categories.suggestion.source)}): ${d.categories.suggestion.add.map((c) => `<span class="badge new">＋ ${esc(c.label)}</span>`).join(" ")} ${d.categories.suggestion.remove.map((c) => `<span class="badge ex">− ${esc(c.label)}</span>`).join(" ")}<div class="muted" style="margin-top:4px">${esc(d.categories.suggestion.reason || "")}</div></div>` : ""}
+        ${d.categories.suggestion?.status === "kept" ? `<div style="margin-top:8px" class="small"><b>AI manteve as categorias:</b> <span class="muted">${esc(d.categories.suggestion.reason || "")}</span></div>` : d.categories.suggestion ? `<div style="margin-top:8px" class="small">Proposta (${esc(d.categories.suggestion.source)}): ${d.categories.suggestion.add.map((c) => `<span class="badge new">＋ ${esc(c.label)}</span>`).join(" ")} ${d.categories.suggestion.remove.map((c) => `<span class="badge ex">− ${esc(c.label)}</span>`).join(" ")}<div class="muted" style="margin-top:4px">${esc(d.categories.suggestion.reason || "")}</div>${d.categories.suggestion.aiView ? `<div class="muted" style="margin-top:4px"><b>Visão da AI:</b> ${esc(d.categories.suggestion.aiView)}</div>` : ""}</div>` : d.categories.flags?.length ? `<div class="muted small" style="margin-top:8px">Ainda sem análise da AI — corre "Propor re-categorização (AI)".</div>` : ""}
       </div>` : ""}
       <div class="card" style="margin-bottom:12px"><h2>Dados usados pela AI</h2><div class="small">${facts.map(([k, v]) => `<span class="badge">${esc(k)}: ${esc((typeof v === "object" ? Object.entries(v).map(([a, b]) => `${a} ${b}`).join(", ") : String(v)).slice(0, 80))}</span>`).join(" ")}</div></div>
       ${d.fields.map((f) => {

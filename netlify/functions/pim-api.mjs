@@ -2,7 +2,7 @@
 import { db, httpError } from "../lib/store.mjs";
 import { json, authorized } from "../lib/http.mjs";
 import { PK, getPimConfig, defaultPimConfig, parseColumn, columnFor, isEditable, diagnose, productFacts, dimensionsText, refreshMeta, getDictionary, fieldsFor, deterministicFixes, labelChanges, categoryFixes, categoryContext } from "../lib/pim.mjs";
-import { humanCat, splitCats } from "../lib/categories.mjs";
+import { humanCat, splitCats, checkCategories } from "../lib/categories.mjs";
 
 const routes = [];
 const route = (method, pattern, handler) => {
@@ -172,12 +172,12 @@ route("GET", "/jobs/:id/products/:sku", async ({ id, sku }) => {
     if (!cfg.editable.includes(attr) && loc === cfg.sourceLocale) { push(columnFor(data.headers, attr, loc, cfg.channel), attr, loc); continue; } // show PT (locked) next to ES
     push(columnFor(data.headers, attr, loc, cfg.channel), attr, loc);
   }
-  for (const col of Object.keys(results?.[sku]?.fields || {})) push(col, parseColumn(col).attr, parseColumn(col).locale);
+  for (const [col, v] of Object.entries(results?.[sku]?.fields || {})) if (v.status !== "kept") push(col, parseColumn(col).attr, parseColumn(col).locale);
   const images = (await db.get(PK.images(id)))?.items?.[sku] || null;
   const cctx = categoryContext(data.rows, dict);
   const catLabel = (c) => ({ code: c, label: humanCat(c, cctx.tax), ecom: c.startsWith("ecom_") });
   const catSug = results?.[sku]?.fields?.categories;
-  const categories = { current: splitCats(row.categories).map(catLabel), suggestion: catSug ? { ...catSug, add: (catSug.catDiff?.add || []).map(catLabel), remove: (catSug.catDiff?.remove || []).map(catLabel) } : null };
+  const categories = { flags: checkCategories(row, cctx, cfg).flags, current: splitCats(row.categories).map(catLabel), suggestion: catSug ? { ...catSug, add: (catSug.catDiff?.add || []).map(catLabel), remove: (catSug.catDiff?.remove || []).map(catLabel) } : null };
   return { sku, family: row.family, facts: productFacts(row, dict || {}, cfg), dimensions: dimensionsText(row), flags: diagnose(row, data.headers, cfg, dict || {}), fields, images, categories, raw: row };
 });
 
@@ -211,6 +211,7 @@ route("POST", "/jobs/:id/bulk", async ({ id, body }) => {
       if (body.action === "reset") { delete r.fields[col]; n++; continue; }
       if (body.action === "accept" && v.warning && !body.force) continue; // fields with guardrail warnings need a human look
       if (body.action === "accept" && col === "categories" && !(body.cols || []).includes("categories")) continue; // categories are accepted on purpose
+      if (v.status === "kept") continue; // AI verdict "keep as is" — nothing to accept
       if (v.status === "pending" || body.force) { v.status = body.action === "accept" ? "accepted" : "rejected"; n++; }
     }
   }
@@ -273,6 +274,44 @@ route("GET", "/jobs/:id/export", async ({ id, query }) => {
   }
   const headers = ["sku", ...[...cols].sort()];
   return { headers, rows, changes };
+});
+
+// ------------------------------------------------------------------ category proposals (review list)
+route("GET", "/jobs/:id/categories", async ({ id }) => {
+  const [dict, data, results] = await Promise.all([getDictionary(), db.get(PK.rows(id)), db.get(PK.results(id))]);
+  const cctx = categoryContext(data.rows, dict);
+  const lab = (c) => ({ code: c, label: humanCat(c, cctx.tax) });
+  const cfg = await getPimConfig();
+  const items = [];
+  for (const r of data.rows) {
+    const sg = results?.[r.sku]?.fields?.categories;
+    const flags = checkCategories(r, cctx, cfg).flags.map((f) => f.msg);
+    if (!sg && !flags.length) continue;
+    const base = { sku: r.sku, name: r["ATT_NAME-pt_PT-ecommerce"] || "", family: r.family, flags, current: splitCats(r.categories).filter((c) => c.startsWith("ecom_")).map(lab) };
+    if (!sg) { items.push({ ...base, add: [], remove: [], source: null, status: "none", reason: "Ainda sem análise da AI — corre \"Propor re-categorização (AI)\"." }); continue; }
+    items.push({ ...base, add: (sg.catDiff?.add || []).map(lab), remove: (sg.catDiff?.remove || []).map(lab), source: sg.source, status: sg.status, reason: sg.reason || "", aiView: sg.aiView || "" });
+  }
+  return { items };
+});
+
+route("GET", "/jobs/:id/categories-export", async ({ id }) => {
+  const [data, results] = await Promise.all([db.get(PK.rows(id)), db.get(PK.results(id))]);
+  const rows = [];
+  for (const r of data.rows) {
+    const sg = results?.[r.sku]?.fields?.categories;
+    if (!sg || sg.status !== "accepted" || String(sg.value) === String(r.categories || "")) continue;
+    rows.push({ SKU: r.sku, Nome: r["ATT_NAME-pt_PT-ecommerce"] || "", "Categorias anteriores": r.categories || "", "Categorias propostas": sg.value });
+  }
+  return { headers: ["SKU", "Nome", "Categorias anteriores", "Categorias propostas"], rows };
+});
+
+route("POST", "/jobs/:id/categories/:sku", async ({ id, sku, body }) => {
+  const results = (await db.get(PK.results(id))) || {};
+  const f = results[decodeURIComponent(sku)]?.fields?.categories;
+  if (!f) throw httpError(404, "Sem proposta");
+  f.status = body.status === "accepted" ? "accepted" : body.status === "rejected" ? "rejected" : "pending";
+  await db.set(PK.results(id), results);
+  return { ok: true, status: f.status };
 });
 
 // ------------------------------------------------------------------ images

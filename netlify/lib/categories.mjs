@@ -130,8 +130,11 @@ ${taxonomyForPrompt(tax)}
 Regras:
 - Cada produto deve estar numa categoria final (a mais específica possível) e nas respetivas categorias-mãe.
 - Remove categorias claramente erradas (ex.: um tapete em "cadeiras"). Não removas categorias de campanha/tema/presentes/faixas de preço (Christmas, Gifts, for_..., T1..T6, up_to_..., from_..._to_...) exceto se forem absurdas.
-- Se as categorias atuais estiverem certas, devolve listas vazias.
-- Justifica numa frase curta em português.
+- Cada produto traz "alertas" (problemas detetados automaticamente). Para CADA alerta tens de: propor a correção concreta (adicionar/remover), OU explicar no motivo porque é que as categorias atuais estão certas apesar do alerta.
+- "Só no nível superior: X": adiciona a subcategoria de X que encaixa no produto; se nenhuma encaixar e o produto já estiver bem classificado noutra árvore (ex.: candeeiro já em Iluminação > Candeeiros de mesa), remove X.
+- "improvável para a família": remove se estiver errada; se fizer sentido (ex.: produto multiuso), explica porquê.
+- Só devolve listas vazias se as categorias estiverem certas — e nesse caso o motivo explica a decisão para cada alerta.
+- O "motivo" é SEMPRE preenchido: uma ou duas frases curtas em português.
 Responde APENAS com JSON: {"<sku>": {"adicionar": ["ecom_..."], "remover": ["ecom_..."], "motivo": "..."}}`;
   const user = "Produtos:\n" + JSON.stringify(items, null, 1);
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -150,7 +153,7 @@ Responde APENAS com JSON: {"<sku>": {"adicionar": ["ecom_..."], "remover": ["eco
     for (const [sku, v] of Object.entries(json)) {
       const add = (v.adicionar || []).filter((c) => tax[c]);
       const remove = (v.remover || []).filter((c) => tax[c]);
-      out[sku] = { add, remove, reason: String(v.motivo || "").slice(0, 200) };
+      out[sku] = { add, remove, reason: String(v.motivo || "").slice(0, 300) };
     }
     return out;
   }

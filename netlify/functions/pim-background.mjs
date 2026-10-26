@@ -2,7 +2,7 @@
 import { db } from "../lib/store.mjs";
 import { authorized } from "../lib/http.mjs";
 import { mapLimit } from "../lib/util.mjs";
-import { proposeCategoriesAI, applyCategoryChange, splitCats, ancestors, humanCat } from "../lib/categories.mjs";
+import { proposeCategoriesAI, applyCategoryChange, splitCats, ancestors, humanCat, checkCategories } from "../lib/categories.mjs";
 import { categoryContext } from "../lib/pim.mjs";
 import { PK, getPimConfig, columnFor, isEditable, diagnose, productFacts, campaignText, optimizeProducts, cleanAi, refreshMeta, getDictionary, fieldsFor } from "../lib/pim.mjs";
 
@@ -40,16 +40,25 @@ export async function runCategoryJob(id, { deadline = Date.now() + 13.5 * 60 * 1
   let errors = 0, fatal = null;
   await mapLimit(batches, 3, async (skus) => {
     if (fatal || Date.now() > deadline) return;
-    const items = skus.map((sku) => { const r = bySku.get(sku); return { sku, nome: r[`ATT_NAME-${cfg.sourceLocale}-${cfg.channel}`], familia: r.family, categorias_atuais: splitCats(r.categories).filter((c) => c.startsWith("ecom_")), descricao: String(r[`ATT_LONG_DESCRIPTION-${cfg.sourceLocale}-${cfg.channel}`] || "").slice(0, 300) }; });
+    const items = skus.map((sku) => { const r = bySku.get(sku); return { sku, nome: r[`ATT_NAME-${cfg.sourceLocale}-${cfg.channel}`], familia: r.family, categorias_atuais: splitCats(r.categories).filter((c) => c.startsWith("ecom_")), alertas: checkCategories(r, cctx, cfg).flags.map((f) => f.msg), pvp: r["ATT_PVP-EUR"] || undefined, descricao: String(r[`ATT_LONG_DESCRIPTION-${cfg.sourceLocale}-${cfg.channel}`] || "").slice(0, 300) }; });
     try { Object.assign(proposals, await proposeCategoriesAI(items, cctx.tax, cfg)); } catch (e) { if (e.fatal) fatal = e; else errors++; console.error("[pim-cat]", e.message); }
   });
   const results = (await db.get(PK.results(id))) || {};
   let changed = 0;
-  for (const [sku, p] of Object.entries(proposals)) {
+  let kept = 0;
+  // the AI looked at the product and changed nothing: keep its explanation visible (no change to export)
+  const keep = (sku, row, prev, why) => {
+    if (prev && prev.catDiff && (prev.catDiff.add.length || prev.catDiff.remove.length)) { prev.aiView = why; return; } // deterministic proposal stays; add the AI view
+    (results[sku] ||= { fields: {} }).fields.categories = { value: row.categories, source: "ai", status: "kept", reason: why, catDiff: { add: [], remove: [] } };
+    kept++;
+  };
+  for (const [sku0, p] of Object.entries(proposals)) {
+    const sku = bySku.has(sku0) ? sku0 : [...bySku.keys()].find((k) => k.replace(/^0+/, "") === sku0.replace(/^0+/, "")) || sku0;
     const row = bySku.get(sku);
-    if (!row || (!p.add.length && !p.remove.length)) continue;
+    if (!row) continue;
     const prev = results[sku]?.fields?.categories;
     if (prev && (prev.source === "manual" || prev.status === "accepted")) continue;
+    if (!p.add.length && !p.remove.length) { keep(sku, row, prev, p.reason || "A AI considerou as categorias atuais corretas (sem justificação devolvida)."); continue; }
     // merge with deterministic proposal if any
     const remove = [...new Set([...(prev?.catDiff?.remove || []), ...p.remove])].filter((c) => !p.add.includes(c));
     let add = [...new Set([...(prev?.catDiff?.add || []), ...p.add])].filter((c) => !remove.includes(c) || p.add.includes(c));
@@ -57,13 +66,13 @@ export async function runCategoryJob(id, { deadline = Date.now() + 13.5 * 60 * 1
     const final = splitCats(applyCategoryChange(row.categories, add, remove)).filter((c) => c.startsWith("ecom_"));
     add = add.filter((c) => p.add.includes(c) || !(prev?.catDiff?.add || []).includes(c) || final.some((o) => o !== c && ancestors(o, cctx.tax).includes(c)) || !cctx.tax[c] || !Object.values(cctx.tax).some((v) => v.parent === c));
     const value = applyCategoryChange(row.categories, add, remove);
-    if (value === row.categories) continue;
+    if (value === row.categories) { keep(sku, row, prev, p.reason); continue; }
     (results[sku] ||= { fields: {} }).fields.categories = { value, source: "ai", status: "pending", reason: [...String(prev?.reason || "").split(" · ").filter((part) => part && !remove.some((c) => part.includes(`"${humanCat(c, cctx.tax)}"`))), p.reason].filter(Boolean).join(" · "), catDiff: { add, remove } };
     changed++;
   }
   await db.set(PK.results(id), results);
   const m = await db.get(PK.job(id));
-  m.progress = { done: Object.keys(proposals).length, total: queue.length, errors, fatal: fatal?.message, finishedAt: new Date().toISOString(), remaining: 0, mode: "categories", changed };
+  m.progress = { done: Object.keys(proposals).length, total: queue.length, errors, fatal: fatal?.message, finishedAt: new Date().toISOString(), remaining: 0, mode: "categories", changed, kept, noAnswer: fatal ? 0 : queue.filter((s) => !proposals[s] && !proposals[s.replace(/^0+/, "")]).length };
   m.queue = [];
   await db.set(PK.job(id), m);
   return m.progress;
