@@ -1,7 +1,7 @@
 // PIM optimizer API (/pim-api/*). Same auth as the feed API.
 import { db, httpError } from "../lib/store.mjs";
 import { json, authorized } from "../lib/http.mjs";
-import { PK, getPimConfig, defaultPimConfig, parseColumn, columnFor, isEditable, diagnose, productFacts, dimensionsText, refreshMeta, getDictionary, fieldsFor, deterministicFixes } from "../lib/pim.mjs";
+import { PK, getPimConfig, defaultPimConfig, parseColumn, columnFor, isEditable, diagnose, productFacts, dimensionsText, refreshMeta, getDictionary, fieldsFor, deterministicFixes, labelChanges } from "../lib/pim.mjs";
 
 const routes = [];
 const route = (method, pattern, handler) => {
@@ -73,22 +73,48 @@ route("POST", "/jobs/:id/rows", async ({ id, body }) => {
   return { count: data.rows.length };
 });
 
-route("POST", "/jobs/:id/finalize", async ({ id }) => {
-  const meta = await job(id);
+// apply deterministic fixes + label rules to a job (never overwrites manual/accepted AI work)
+async function applyAuto(id) {
   const [cfg, dict, data] = await Promise.all([getPimConfig(), getDictionary(), db.get(PK.rows(id))]);
   const results = (await db.get(PK.results(id))) || {};
-  let fixes = 0;
+  let fixes = 0, labels = 0;
   for (const r of data.rows) {
-    const f = deterministicFixes(r, data.headers, cfg, dict);
-    if (!Object.keys(f).length) continue;
-    results[r.sku] ||= { fields: {} };
-    for (const [col, value] of Object.entries(f)) { results[r.sku].fields[col] = { value, source: "fix", status: "pending" }; fixes++; }
+    const cur = (results[r.sku] ||= { fields: {} });
+    // fixes
+    for (const [col, f] of Object.entries(deterministicFixes(r, data.headers, cfg, dict))) {
+      const prev = cur.fields[col];
+      if (prev && prev.source !== "fix") continue;
+      cur.fields[col] = { value: f.value, source: "fix", status: prev?.value === f.value ? prev.status : "pending", reason: f.reason };
+      fixes++;
+    }
+    // labels: recompute from scratch (removing a rule removes its labels)
+    for (const [col, v] of Object.entries(cur.fields)) if (v.source === "label") delete cur.fields[col];
+    const accepted = Object.fromEntries(Object.entries(cur.fields).filter(([, v]) => v.status === "accepted").map(([c, v]) => [c, v.value]));
+    for (const [col, value] of Object.entries(labelChanges(r, data.headers, cfg, accepted))) {
+      if (cur.fields[col] && cur.fields[col].source === "manual") continue;
+      cur.fields[col] = { value, source: "label", status: "accepted", reason: "Regra de label" };
+      labels++;
+    }
+    if (!Object.keys(cur.fields).length) delete results[r.sku];
   }
   await db.set(PK.results(id), results);
-  meta.fixes = fixes;
+  return { fixes, labels };
+}
+
+route("POST", "/jobs/:id/finalize", async ({ id }) => {
+  const meta = await job(id);
+  const r = await applyAuto(id);
+  meta.fixes = r.fixes;
   meta.status = "ready";
   return stripIndex(await refreshMeta(id, meta));
 });
+
+route("POST", "/jobs/:id/auto", async ({ id }) => {
+  const r = await applyAuto(id);
+  const meta = await refreshMeta(id, await job(id));
+  return { ...r, completeness: meta.completeness };
+});
+
 const stripIndex = ({ index, ...m }) => m;
 
 route("GET", "/jobs/:id", async ({ id }) => {
@@ -140,7 +166,8 @@ route("GET", "/jobs/:id/products/:sku", async ({ id, sku }) => {
     push(columnFor(data.headers, attr, loc, cfg.channel), attr, loc);
   }
   for (const col of Object.keys(results?.[sku]?.fields || {})) push(col, parseColumn(col).attr, parseColumn(col).locale);
-  return { sku, family: row.family, facts: productFacts(row, dict || {}, cfg), dimensions: dimensionsText(row), flags: diagnose(row, data.headers, cfg, dict || {}), fields, raw: row };
+  const images = (await db.get(PK.images(id)))?.items?.[sku] || null;
+  return { sku, family: row.family, facts: productFacts(row, dict || {}, cfg), dimensions: dimensionsText(row), flags: diagnose(row, data.headers, cfg, dict || {}), fields, images, raw: row };
 });
 
 route("PUT", "/jobs/:id/products/:sku", async ({ id, sku, body }) => {
@@ -219,9 +246,28 @@ route("GET", "/jobs/:id/export", async ({ id, query }) => {
     }
     if (Object.keys(out).length > 1) rows.push(out);
   }
+  const changes = rows.reduce((n, r) => n + Object.keys(r).length - 1, 0);
+  if (query.get("full") === "1") {
+    // full file: every original column + new locale columns, every product, original values with accepted changes applied
+    const byChanged = new Map(rows.map((r) => [r.sku, r]));
+    const headers = [...data.headers, ...[...cols].filter((c) => !data.headers.includes(c)).sort()];
+    const full = data.rows.map((r) => ({ ...r, ...(byChanged.get(r.sku) || {}) }));
+    return { headers, rows: full, changes, full: true };
+  }
   const headers = ["sku", ...[...cols].sort()];
-  return { headers, rows, changes: rows.reduce((n, r) => n + Object.keys(r).length - 1, 0) };
+  return { headers, rows, changes };
 });
+
+// ------------------------------------------------------------------ images
+route("POST", "/jobs/:id/images", async ({ id, req }) => {
+  await job(id);
+  const res = await fetch(`${new URL(req.url).origin}/.netlify/functions/pim-images-background`, {
+    method: "POST", headers: { authorization: `Bearer ${process.env.APP_PASSWORD}`, "content-type": "application/json" }, body: JSON.stringify({ id }),
+  });
+  if (res.status !== 202 && !res.ok) throw httpError(500, `Não foi possível iniciar (${res.status})`);
+  return { started: true };
+});
+route("GET", "/jobs/:id/images", async ({ id }) => (await db.get(PK.images(id))) || { items: {} });
 
 // ------------------------------------------------------------------ handler
 export default async (req) => {
