@@ -111,8 +111,9 @@ export function expandBundled() {
     options[attr] = Object.fromEntries(Object.entries(m).map(([c, l]) => [c, Array.isArray(l) ? { pt_PT: l[0], es_ES: l[1] || l[0] } : { pt_PT: l, es_ES: l }]));
   }
   options.att_colors = options.ATT_COLOR;
+  const categories = Object.fromEntries(Object.entries(d.cat || {}).map(([c, [label, label_es, parent]]) => [c, { label, label_es: label_es || label, parent: parent || null }]));
   const attributes = Object.fromEntries(Object.entries(d.attrs).map(([c, l]) => [c, { pt_PT: l }]));
-  expanded = { families, options, attributes, source: d.source, importedAt: d.importedAt, bundled: true };
+  expanded = { families, options, attributes, categories, labelTypes: d.labelTypes || {}, source: d.source, importedAt: d.importedAt, bundled: true };
   return expanded;
 }
 
@@ -124,6 +125,8 @@ export async function getDictionary() {
     families: { ...base.families, ...(stored.families || {}) },
     options: { ...base.options, ...(stored.options || {}) },
     attributes: { ...base.attributes, ...(stored.attributes || {}) },
+    categories: { ...base.categories, ...(stored.categories || {}) },
+    labelTypes: { ...base.labelTypes, ...(stored.labelTypes || {}) },
     source: stored.source || base.source, importedAt: stored.importedAt || base.importedAt,
   };
 }
