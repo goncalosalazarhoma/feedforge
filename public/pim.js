@@ -1,7 +1,7 @@
 /* FeedForge — PIM optimizer view (Akeneo XLSX exports). */
 (() => {
   "use strict";
-  const { S, $, $$, esc, toast, modal, closeModal, guard, fmtDate, VIEWS } = window.FF;
+  const { S, $, $$, esc, toast, modal, closeModal, guard, fmtDate, VIEWS, ask } = window.FF;
   const P = { tab: "files", jobId: null, job: null, cfg: null, list: { q: "", filter: "", flag: "", page: 1 }, poll: null };
 
   const FLAG_LABEL = {
@@ -68,7 +68,7 @@
       </div>`;
     $("#pim-file").onchange = (e) => upload(e.target.files[0]);
     $$("tr[data-job]", box).forEach((tr) => (tr.onclick = (e) => { if (e.target.dataset.del) return; P.jobId = tr.dataset.job; P.list = { q: "", filter: "", flag: "", page: 1 }; drawJob(box); }));
-    $$("[data-del]", box).forEach((b) => (b.onclick = () => guard(async () => { if (!confirm("Apagar este ficheiro e as sugestões?")) return; await papi(`/jobs/${b.dataset.del}`, { method: "DELETE" }); drawFiles(box); })));
+    $$("[data-del]", box).forEach((b) => (b.onclick = () => guard(async () => { if (!(await ask("Apagar este ficheiro e as sugestões?", { ok: "Apagar", danger: true }))) return; await papi(`/jobs/${b.dataset.del}`, { method: "DELETE" }); drawFiles(box); })));
   }
 
   async function upload(file) {
@@ -132,7 +132,7 @@
     $("#pim-back").onclick = (e) => { e.preventDefault(); P.jobId = null; drawFiles(box); };
     $("#pim-run").onclick = (e) => run("flagged", e.target);
     $("#pim-run-all").onclick = (e) => run("all", e.target);
-    $("#pim-redo").onclick = (e) => { if (confirm("Voltar a gerar com AI todos os produtos? Sugestões AI já aceites são substituídas (edições manuais mantêm-se).")) run("all", e.target, true); };
+    $("#pim-redo").onclick = async (e) => { if (await ask("Voltar a gerar com AI todos os produtos? As sugestões AI já aceites são substituídas; as tuas edições manuais mantêm-se.", { ok: "Refazer AI" })) run("all", e.target, true); };
     $("#pim-accept").onclick = (e) => guard(async () => { const r = await papi(`/jobs/${P.jobId}/bulk`, { method: "POST", body: { action: "accept" } }); toast(`${r.changed} sugestões aceites`); drawJob(box); }, e.target);
     $("#pim-export").onclick = (e) => guard(() => exportXlsx(), e.target);
     $$("[data-flag]", box).forEach((tr) => (tr.onclick = () => { P.list = { ...P.list, flag: tr.dataset.flag, filter: "", page: 1 }; drawJob(box); }));

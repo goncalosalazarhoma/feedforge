@@ -7,6 +7,11 @@ import { PK, getPimConfig, columnFor, isEditable, diagnose, productFacts, campai
 const nums = (s) => (String(s || "").match(/\d+(?:[.,]\d+)?/g) || []).map((x) => Number(x.replace(",", "."))).sort((a, b) => a - b).join("|");
 // Guardrails: the AI must not change facts stated in the original name
 function guard(attr, loc, value, row, cfg, dict) {
+  if (attr === "ATT_LONG_DESCRIPTION") {
+    const src = JSON.stringify(row).toLowerCase();
+    const invented = ["natura", "artesana", "feito à mão", "hecho a mano", "resistente à água", "impermeável", "intempéries", "intemperie"].filter((w) => value.toLowerCase().includes(w) && !src.includes(w));
+    return invented.length ? `Possível característica inventada: ${invented.join(", ")}` : null;
+  }
   if (!["ATT_NAME", "ATT_PLP_NAME"].includes(attr)) return null;
   const orig = row[`ATT_NAME-${cfg.sourceLocale}-${cfg.channel}`] || "";
   const on = nums(orig), nn = nums(value);
@@ -78,7 +83,10 @@ export async function runPimJob(id, { deadline = Date.now() + 13.5 * 60 * 1000 }
               const v = per?.[loc]?.[attr];
               const col = columnFor(data.headers, attr, loc, cfg.channel);
               if (v && isEditable(col, cfg)) {
-                const clean = cleanAi(attr, v, cfg);
+                let clean = cleanAi(attr, v, cfg);
+                // campaign text only where the original had it (the model sometimes copies it from another product in the batch)
+                const item = items[skus.indexOf(sku)];
+                if (attr === "ATT_LONG_DESCRIPTION" && !item?.campaign) clean = clean.replace(/\s*\|?\s*¡?h[oô]!\s*¡?h[oô]!\s*¡?h[oô]ma![\s\S]*?(?=\s\|\s|$)/i, "").replace(/\s{2,}/g, " ").trim();
                 const warning = guard(attr, loc, clean, bySku.get(sku), cfg, dict);
                 out[col] = warning ? { value: clean, warning } : clean;
               }

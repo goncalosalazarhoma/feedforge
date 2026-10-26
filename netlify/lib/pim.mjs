@@ -314,7 +314,7 @@ Regras:
 - Não inventes qualidades ou características (natural, artesanal, macio, resistente às intempéries, etc.) que não estejam nos dados.
 - Português europeu sem anglicismos (nada de "storage", "design" quando há equivalente simples, etc.).
 - ES: tradução completa, nenhuma palavra em português. Glossário obrigatório: tapete→alfombra; almofada decorativa→cojín; almofada de cama/travesseiro→almohada; candeeiro→lámpara; vaso para plantas→maceta; vaso/jarra decorativa→jarrón; toalha de mesa→mantel; toalha de banho→toalla; roupeiro→armario; coroa→corona; cesto→cesta; caixa→caja; prateado→plateado; dourado→dorado; saboneteira→jabonera; coador→colador; tapete de banho→alfombra de baño.
-- Remove textos genéricos de marketing ("Sabia que…", "Conheça a nossa gama…"). Se "sazonal" for true e existir "texto_campanha", termina a descrição com esse texto (traduzido no ES); se sazonal for false, não incluas texto de campanha.
+- Remove textos genéricos de marketing ("Sabia que…", "Conheça a nossa gama…"). Só inclui texto de campanha no produto que tiver o campo "texto_campanha" (coloca-o antes da linha de especificações, traduzido no ES); nos outros produtos nunca incluas texto de campanha, mesmo que outro produto do lote o tenha.
 - Sem HTML, emojis, preços, promoções ou MAIÚSCULAS integrais. Referências de coleção/marca mantêm-se como no original.
 - Gera para cada língua pedida: ${locales.map((l) => `${l} = ${LANG[l] || l}`).join("; ")}. O ES é uma adaptação natural, não tradução literal.
 

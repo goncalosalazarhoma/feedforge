@@ -134,6 +134,17 @@
     $$("[data-close]", $("#modal-card")).forEach((b) => (b.onclick = closeModal));
   }
   function closeModal() { $("#modal").classList.add("hidden"); }
+  // In-app confirmation (native confirm()/prompt() can be blocked by embedded browsers)
+  function ask(message, { ok = "Confirmar", danger = false, typeToConfirm = null } = {}) {
+    return new Promise((resolve) => {
+      modal(`<h2>Confirmar</h2><p>${esc(message)}</p>
+        ${typeToConfirm ? `<label class="f">Escreve <b>${esc(typeToConfirm)}</b> para confirmar<input id="ask-input" autocomplete="off" /></label>` : ""}
+        <div class="row" style="margin-top:14px"><span class="grow"></span><button class="btn" id="ask-no">Cancelar</button><button class="btn ${danger ? "danger" : "primary"}" id="ask-yes">${esc(ok)}</button></div>`);
+      const done = (v) => { closeModal(); resolve(v); };
+      $("#ask-no").onclick = () => done(false);
+      $("#ask-yes").onclick = () => done(typeToConfirm ? $("#ask-input").value.trim() === typeToConfirm : true);
+    });
+  }
   $("#modal").onclick = (e) => { if (e.target.id === "modal") closeModal(); };
   $("#drawer").onclick = (e) => { if (e.target.id === "drawer") closeDrawer(); };
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeModal(); closeDrawer(); } });
@@ -292,7 +303,7 @@
     $("#bulk-ai").onclick = (e) => guard(async () => {
       const r = await api(F(`/products?${qs({ ids: 1, size: 1 })}`));
       if (!r.ids?.length) return toast("Nenhum produto neste filtro");
-      if (!confirm(`Enviar ${r.ids.length} produtos para a fila de AI? A copy AI existente destes produtos será regenerada no próximo run completo.`)) return;
+      if (!(await ask(`Enviar ${r.ids.length} produtos para a fila de AI? A copy AI existente destes produtos será regenerada no próximo run completo.`, { ok: "Enviar" }))) return;
       const q = await api(F("/ai-requests"), { method: "POST", body: { ids: r.ids, clearExisting: false } });
       toast(`${q.queued} produtos na fila — serão otimizados no próximo run completo`);
     }, e.target);
@@ -414,6 +425,6 @@
   }
 
   // expose for part 2
-  window.FF = { S, $, $$, esc, uid, clone, api, F, guard, toast, modal, closeModal, render, saveConfig, headers, fieldOptions, loadFeed, fmtDate, VIEWS, VIRTUALS, OP_LABEL, ACT_LABEL, TF_LABEL, startRun };
+  window.FF = { S, $, $$, esc, uid, clone, api, F, guard, toast, modal, closeModal, ask, render, saveConfig, headers, fieldOptions, loadFeed, fmtDate, VIEWS, VIRTUALS, OP_LABEL, ACT_LABEL, TF_LABEL, startRun };
   window.addEventListener("DOMContentLoaded", boot);
 })();

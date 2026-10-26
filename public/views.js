@@ -1,7 +1,7 @@
 /* FeedForge UI — config views (rules, labels, fields, AI, GMC, settings, history). */
 (() => {
   "use strict";
-  const { S, $, $$, esc, uid, clone, api, F, guard, toast, modal, closeModal, render, saveConfig, headers, fieldOptions, fmtDate, VIEWS, VIRTUALS, OP_LABEL, ACT_LABEL, TF_LABEL } = window.FF;
+  const { S, $, $$, esc, uid, clone, api, F, guard, toast, modal, closeModal, ask, render, saveConfig, headers, fieldOptions, fmtDate, VIEWS, VIRTUALS, OP_LABEL, ACT_LABEL, TF_LABEL } = window.FF;
   const NO_VALUE_OPS = ["empty", "not_empty"];
   const today = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Lisbon" }).format(new Date());
   function ruleStatus(r) {
@@ -104,13 +104,13 @@
           if (t.dataset.a === "type" && e.type === "change") drawRules();
         }
       };
-      el.onclick = (e) => {
+      el.onclick = async (e) => {
         const act = e.target.dataset.act;
         if (!act) return;
         if (act === "up" && i > 0) [draft[i - 1], draft[i]] = [draft[i], draft[i - 1]];
         if (act === "down" && i < draft.length - 1) [draft[i + 1], draft[i]] = [draft[i], draft[i + 1]];
         if (act === "dup") draft.splice(i + 1, 0, { ...clone(r), id: uid(), name: r.name + " (cópia)" });
-        if (act === "del" && confirm(`Apagar a regra “${r.name}”?`)) draft.splice(i, 1);
+        if (act === "del" && (await ask(`Apagar a regra “${r.name}”?`, { ok: "Apagar", danger: true }))) draft.splice(i, 1);
         if (act === "add-cond") r.conditions.push({ field: "brand", op: "equals", value: "" });
         if (act === "del-cond") r.conditions.splice(Number(e.target.dataset.ci), 1);
         if (act === "add-act") r.actions.push({ type: "set", field: "custom_label_0", value: "" });
@@ -418,7 +418,7 @@
     }, e.target);
     $("#s-unlock").onclick = () => guard(async () => { await api(F("/lock"), { method: "DELETE" }); toast("Lock libertado"); });
     $("#s-del").onclick = () => guard(async () => {
-      if (prompt(`Escreve "${c.id}" para apagar o feed e todo o histórico, edições e copy AI:`) !== c.id) return;
+      if (!(await ask("Apagar o feed e todo o histórico, edições e copy AI?", { ok: "Apagar feed", danger: true, typeToConfirm: c.id }))) return;
       await api(F(), { method: "DELETE" });
       try { localStorage.removeItem("ff_feed"); } catch {}
       location.hash = "";
