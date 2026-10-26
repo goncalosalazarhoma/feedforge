@@ -87,3 +87,23 @@ test/pipeline.test.mjs                teste local: npm install && npm test
 - O run agendado arranca à hora definida (Lisboa); se falhar, tenta na hora seguinte (até 3x por dia). Runs manuais não contam como o run do dia.
 - A app guarda o estado em Netlify Blobs: snapshot do dia anterior, copy AI, edições, último feed e output.
 - Os links `export?format=csv` refletem a sheet quase em tempo real; os links "Publicar na Web" podem ter alguns minutos de cache.
+
+## PIM optimizer (Akeneo)
+
+Separador **PIM optimizer** na app:
+
+1. **Carregar** um export XLSX/CSV do Akeneo (tem de ter a coluna `sku`). O ficheiro é lido no browser.
+2. **Diagnóstico** por produto: nome (vazio, curto, maiúsculas), nome PLP em falta, descrição longa curta para SEO, texto genérico/campanha, HTML, traduções `es_ES` em falta, completude < 100% e — com o dicionário Akeneo importado — atributos obrigatórios da família em falta.
+3. **AI** (background, retoma onde parou): gera `ATT_NAME`, `ATT_PLP_NAME` e `ATT_LONG_DESCRIPTION` (SEO/GEO) em `pt_PT` e `es_ES`. O texto de campanha só se mantém em produtos sazonais (`ATT_SEASONALITY` = permanent_seasonal/Promocional ou categoria sazonal). A descrição curta não é tocada.
+4. **Revisão** lado a lado: aceitar / rejeitar / editar por campo, ou aceitar em bloco.
+5. **Exportar XLSX** só com `sku` + colunas aceites e alteradas — preços, EAN, códigos ERP, fornecedor e logística nunca saem (só os atributos marcados como editáveis em *Campos & AI*).
+
+Regras do Akeneo incluídas (`netlify/lib/akeneo-dictionary.mjs`, snapshot só de leitura de homa.cloud.akeneo.com): requisitos de completude do canal `ecommerce` das 50 famílias, opções de cor/material/marca/estilo/secções/sazonalidade/aroma em PT e ES, e nomes dos atributos. Com isto o diagnóstico separa obrigatórios de **conteúdo** (resolvidos aqui) de obrigatórios de **dados** (compras/logística), a AI recebe cor/material/composição em texto, e para ES gera também `ATT_SHORT_DESCRIPTION` (máx. 40, limite do Akeneo) e `ATT_PLP_DESCRIPTION` — obrigatórios em todas as famílias. `ATT_SEASONALITY-es_ES` é copiado do PT quando a família o exige.
+
+Ficheiros: `netlify/lib/pim.mjs`, `netlify/lib/akeneo-dictionary.mjs`, `netlify/functions/pim-api.mjs` (rotas `/pim-api/*`), `netlify/functions/pim-background.mjs`, `public/pim.js`.
+
+### PIM — deduções, imagens e labels
+
+- **Deduções sem AI** (só preenchem células vazias, cada valor mostra a origem): Cores ← Cor variante; Volume da caixa ← C×L×A; Composição ← Material (+100% se o texto o disser); Atividade de ar livre ← categorias de jardim/exterior; Coleção ← palavra em maiúsculas no nome; Peças ← "Conjunto de N"/"N peças"; Capacidade/Tensão/Potência ← valores no texto; Aroma ← nome do aroma no texto; LED ← "LED" no texto; Sazonalidade ES ← PT.
+- **Imagens** (`pim-images-background`): quantidade a partir de `ATT_PRODUCT_IMAGE`/`ATT_AMBIANCE_IMAGES` (deteta códigos duplicados em dois formatos), qualidade a partir dos links públicos do feed (resolução, proporção, peso, links partidos). Pontuação /100 por produto.
+- **Labels** (separador Labels do PIM): regras SE/ENTÃO com agendamento para `Etiqueta_homa`, `ATT_NEW` (+datas), `ATT_BEST` (+datas), `ATT_ONLINE_EXCLUSIVE`, `ATT_THEME`, `ATT_BROCHURE_COLLECTION`.
