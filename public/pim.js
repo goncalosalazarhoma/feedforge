@@ -8,7 +8,7 @@
     "ATT_NAME:empty": "Nome vazio", "ATT_NAME:short": "Nome curto", "ATT_NAME:long": "Nome longo", "ATT_NAME:caps": "Nome em maiúsculas", "ATT_NAME:mixed_case": "Maiúsculas inconsistentes no nome",
     "ATT_PLP_NAME:empty": "Nome PLP vazio", "ATT_PLP_NAME:caps": "Nome PLP em maiúsculas",
     "ATT_LONG_DESCRIPTION:empty": "Descrição longa vazia", "ATT_LONG_DESCRIPTION:short": "Descrição longa curta p/ SEO", "ATT_LONG_DESCRIPTION:boilerplate": "Texto genérico / campanha", "ATT_LONG_DESCRIPTION:title_case": "Descrição Em Maiúsculas Por Palavra", "ATT_LONG_DESCRIPTION:html": "HTML na descrição",
-    "_completeness:incomplete": "Completude < 100%", "_required:missing_content": "Obrigatórios de conteúdo em falta", "_required:missing_data": "Obrigatórios de dados em falta (compras/logística)", "ATT_PLP_DESCRIPTION:dims_mismatch": "Descrição PLP ≠ dimensões", "_dimensions:suspicious": "Dimensões suspeitas",
+    "_completeness:incomplete": "Completude < 100%", "_categories:no_ecom": "Sem categoria ecommerce", "_categories:no_leaf": "Categoria só no nível superior", "_categories:unlikely": "Categoria improvável para a família", "_categories:xmas_missing": "Natal fora da categoria Natal", "_categories:price_band": "Faixa de preço errada", "_required:missing_content": "Obrigatórios de conteúdo em falta", "_required:missing_data": "Obrigatórios de dados em falta (compras/logística)", "ATT_PLP_DESCRIPTION:dims_mismatch": "Descrição PLP ≠ dimensões", "_dimensions:suspicious": "Dimensões suspeitas",
   };
   const flagLabel = (f) => FLAG_LABEL[f] || f.replace(/:missing_(\w+)/, " sem $1");
 
@@ -131,6 +131,12 @@
         </div>
         <div class="card"><h2>Imagens</h2><div id="pim-img">A carregar…</div></div>
       </div>
+      <div class="card"><h2>Categorias</h2>
+        ${(() => { const cf = Object.entries(j.flagCount || {}).filter(([k]) => k.startsWith("_categories:")); return cf.length ? `<div class="chips" style="margin-bottom:10px">${cf.map(([k, n]) => `<span class="chip" data-flag="${esc(k)}">${esc(flagLabel(k))} · <b>${n}</b></span>`).join("")}</div>` : `<p class="muted">Sem problemas de categorização detetados.</p>`; })()}
+        <p class="muted small">Correções automáticas (categoria-mãe em falta, Natal, faixa de preço vs PVP) aparecem já como propostas. A AI propõe a categoria final certa e remove as erradas, usando só códigos existentes. Os códigos ERP (numéricos) nunca são alterados. As categorias não são aceites em bloco com o resto.</p>
+        <div class="row"><button class="btn" id="pim-cat-run" ${j.running ? "disabled" : ""}>Propor re-categorização (AI)</button><button class="btn" id="pim-cat-accept">Aceitar categorias propostas</button>
+        ${j.progress?.mode === "categories" ? `<span class="muted small">Última proposta: ${j.progress.changed ?? 0} produtos com alterações · ${fmtDate(j.progress.finishedAt)}</span>` : ""}</div>
+      </div>
       <div class="card">
         <div class="row" style="margin-bottom:10px">
           <input id="pim-q" placeholder="Pesquisar sku ou nome…" value="${esc(P.list.q)}" style="min-width:240px" />
@@ -149,6 +155,8 @@
     $$("[data-flag]", box).forEach((tr) => (tr.onclick = () => { P.list = { ...P.list, flag: tr.dataset.flag, filter: "", page: 1 }; drawJob(box); }));
     $$("[data-f]", box).forEach((c) => (c.onclick = () => { P.list = { ...P.list, filter: c.dataset.f, flag: "", page: 1 }; drawJob(box); }));
     let t; $("#pim-q").oninput = (e) => { clearTimeout(t); t = setTimeout(() => { P.list.q = e.target.value; P.list.page = 1; drawList(); }, 250); };
+    $("#pim-cat-run").onclick = (e) => guard(async () => { const r = await papi(`/jobs/${P.jobId}/run`, { method: "POST", body: { mode: "categories" } }); toast(r.queued ? `${r.queued} produtos enviados para re-categorização` : "Nenhum produto com problemas de categoria"); setTimeout(() => drawJob(box), 4000); }, e.target);
+    $("#pim-cat-accept").onclick = async (e) => { if (await ask("Aceitar todas as propostas de categorias pendentes? Revê primeiro algumas no detalhe do produto.", { ok: "Aceitar categorias" })) guard(async () => { const r = await papi(`/jobs/${P.jobId}/bulk`, { method: "POST", body: { action: "accept", cols: ["categories"] } }); toast(`${r.changed} propostas de categoria aceites`); drawJob(box); }, e.target); };
     $("#pim-auto").onclick = (e) => guard(async () => { const r = await papi(`/jobs/${P.jobId}/auto`, { method: "POST" }); toast(`${r.fixes} deduções · ${r.labels} labels`); drawJob(box); }, e.target);
     drawImages();
     drawList();
@@ -239,6 +247,10 @@
       ${d.images ? `<div class="card" style="margin-bottom:12px"><h2>Imagens · ${d.images.score ?? d.images.quantityScore}/100</h2>
         <div class="small muted" style="margin-bottom:6px">${d.images.product.effective} foto(s) de produto${d.images.product.duplicated ? ` (${d.images.product.raw} códigos)` : ""} · ${d.images.ambiance.effective} de ambiente${d.images.issues.length ? " · " + esc(d.images.issues.join(" · ")) : ""}</div>
         <div class="row">${d.images.feedImages.map((im) => `<div style="text-align:center"><img src="${esc(im.url)}" style="width:96px;height:96px;object-fit:cover;border-radius:6px;background:var(--soft)" loading="lazy" onerror="this.style.opacity=.2"/><div class="small muted">${im.w ? `${im.w}×${im.h}` : esc(im.error || "")}${im.kb ? ` · ${im.kb} KB` : ""}</div></div>`).join("")}</div></div>` : ""}
+      ${d.categories ? `<div class="card" style="margin-bottom:12px"><h2>Categorias</h2>
+        <div class="small">${d.categories.current.filter((c) => c.ecom).map((c) => `<span class="badge${d.categories.suggestion?.remove.some((x) => x.code === c.code) ? " ex" : ""}">${esc(c.label)}</span>`).join(" ") || `<span class="muted">sem categoria ecommerce</span>`}</div>
+        ${d.categories.suggestion ? `<div style="margin-top:8px" class="small">Proposta (${esc(d.categories.suggestion.source)}): ${d.categories.suggestion.add.map((c) => `<span class="badge new">＋ ${esc(c.label)}</span>`).join(" ")} ${d.categories.suggestion.remove.map((c) => `<span class="badge ex">− ${esc(c.label)}</span>`).join(" ")}<div class="muted" style="margin-top:4px">${esc(d.categories.suggestion.reason || "")}</div></div>` : ""}
+      </div>` : ""}
       <div class="card" style="margin-bottom:12px"><h2>Dados usados pela AI</h2><div class="small">${facts.map(([k, v]) => `<span class="badge">${esc(k)}: ${esc((typeof v === "object" ? Object.entries(v).map(([a, b]) => `${a} ${b}`).join(", ") : String(v)).slice(0, 80))}</span>`).join(" ")}</div></div>
       ${d.fields.map((f) => {
         const s = f.suggestion;

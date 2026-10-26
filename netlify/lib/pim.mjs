@@ -1,6 +1,7 @@
 // PIM optimizer — works on Akeneo XLSX/CSV exports (columns like ATT_NAME-pt_PT-ecommerce).
 import { db } from "./store.mjs";
 import BUNDLED from "./akeneo-dictionary.mjs";
+import { learnTaxonomy, checkCategories, applyCategoryChange } from "./categories.mjs";
 
 export const PK = {
   config: () => "pim/config",
@@ -31,6 +32,7 @@ export function defaultPimConfig() {
     // merchandising "labels" managed by label rules
     labelFields: ["Etiqueta_homa", "ATT_NEW", "ATT_START_DATE_NEW", "ATT_DATA_FIM_NEW", "ATT_BEST", "ATT_BEST_START_DATE", "ATT_BEST_END_DATE", "ATT_ONLINE_EXCLUSIVE", "ATT_THEME", "ATT_BROCHURE_COLLECTION"],
     labelRules: [],
+    recategorize: true,           // propose changes to the "categories" column (ecommerce codes only; ERP codes are never touched)
     seasonalValues: ["permanent_seasonal", "Promocional"],
     seasonalCategoryPattern: "Christmas|Natal|Halloween|Easter|Pascoa|Summer|Verao",
     limits: { ATT_NAME: 70, ATT_PLP_NAME: 60, ATT_SHORT_DESCRIPTION: 40, longMin: 400, longMax: 1200 },
@@ -80,6 +82,7 @@ export function isEditable(col, cfg) {
   if ((cfg.enrichable || []).includes(p.attr)) return true;          // value (+ -unit for metrics)
   if (p.unit) return false;
   if ((cfg.labelFields || []).includes(p.attr)) return true;
+  if (col === "categories" && cfg.recategorize !== false) return true;
   if (cfg.editable.includes(p.attr)) return true;
   // translate-only attributes: writable in the other locales, never in the source locale
   if ((cfg.translateOnly || []).includes(p.attr) && p.locale && p.locale !== cfg.sourceLocale) return true;
@@ -400,9 +403,15 @@ export function estimateCompleteness(row, headers, cfg, dict, fields = {}) {
   return { pt: [clamp(base), clamp(ptAfter)], es: [clamp(es(row, base)), clamp(es(after, ptAfter))] };
 }
 
+export function categoryContext(rows, dict) {
+  return learnTaxonomy(rows, dict?.categories || {});
+}
+
 export function buildIndex(rows, headers, cfg, dict, results = {}) {
+  const cctx = categoryContext(rows, dict);
   return rows.map((r) => {
     const flags = diagnose(r, headers, cfg, dict);
+    for (const f of checkCategories(r, cctx, cfg).flags) flags.push({ field: "_categories", code: f.code, msg: f.msg, severity: f.severity });
     const res = results[r.sku]?.fields || {};
     const vals = Object.values(res);
     const content = vals.filter((v) => v.source !== "fix");
@@ -529,4 +538,13 @@ export function labelChanges(row, headers, cfg, accepted = {}) {
     if (String(v ?? "") !== String(row[k] ?? "")) out[k] = String(v ?? "");
   }
   return out;
+}
+
+// deterministic category fixes (missing parents, Christmas, price band) — need the taxonomy context
+export function categoryFixes(row, cfg, cctx) {
+  if (cfg.recategorize === false) return null;
+  const r = checkCategories(row, cctx, cfg);
+  if (!r.add.length && !r.remove.length) return null;
+  const value = applyCategoryChange(row.categories, r.add, r.remove);
+  return value === row.categories ? null : { value, reason: r.reasons.join(" · "), catDiff: { add: r.add, remove: r.remove } };
 }

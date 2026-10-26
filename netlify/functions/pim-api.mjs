@@ -1,7 +1,8 @@
 // PIM optimizer API (/pim-api/*). Same auth as the feed API.
 import { db, httpError } from "../lib/store.mjs";
 import { json, authorized } from "../lib/http.mjs";
-import { PK, getPimConfig, defaultPimConfig, parseColumn, columnFor, isEditable, diagnose, productFacts, dimensionsText, refreshMeta, getDictionary, fieldsFor, deterministicFixes, labelChanges } from "../lib/pim.mjs";
+import { PK, getPimConfig, defaultPimConfig, parseColumn, columnFor, isEditable, diagnose, productFacts, dimensionsText, refreshMeta, getDictionary, fieldsFor, deterministicFixes, labelChanges, categoryFixes, categoryContext } from "../lib/pim.mjs";
+import { humanCat, splitCats } from "../lib/categories.mjs";
 
 const routes = [];
 const route = (method, pattern, handler) => {
@@ -78,8 +79,13 @@ async function applyAuto(id) {
   const [cfg, dict, data] = await Promise.all([getPimConfig(), getDictionary(), db.get(PK.rows(id))]);
   const results = (await db.get(PK.results(id))) || {};
   let fixes = 0, labels = 0;
+  const cctx = categoryContext(data.rows, dict);
   for (const r of data.rows) {
     const cur = (results[r.sku] ||= { fields: {} });
+    // category fixes (never over an AI/manual proposal)
+    const cf = categoryFixes(r, cfg, cctx);
+    const pc = cur.fields.categories;
+    if (cf && (!pc || pc.source === "fix")) { cur.fields.categories = { value: cf.value, source: "fix", status: pc?.value === cf.value ? pc.status : "pending", reason: cf.reason, catDiff: cf.catDiff }; fixes++; }
     // fixes
     for (const [col, f] of Object.entries(deterministicFixes(r, data.headers, cfg, dict))) {
       const prev = cur.fields[col];
@@ -167,7 +173,11 @@ route("GET", "/jobs/:id/products/:sku", async ({ id, sku }) => {
   }
   for (const col of Object.keys(results?.[sku]?.fields || {})) push(col, parseColumn(col).attr, parseColumn(col).locale);
   const images = (await db.get(PK.images(id)))?.items?.[sku] || null;
-  return { sku, family: row.family, facts: productFacts(row, dict || {}, cfg), dimensions: dimensionsText(row), flags: diagnose(row, data.headers, cfg, dict || {}), fields, images, raw: row };
+  const cctx = categoryContext(data.rows, dict);
+  const catLabel = (c) => ({ code: c, label: humanCat(c, cctx.tax), ecom: c.startsWith("ecom_") });
+  const catSug = results?.[sku]?.fields?.categories;
+  const categories = { current: splitCats(row.categories).map(catLabel), suggestion: catSug ? { ...catSug, add: (catSug.catDiff?.add || []).map(catLabel), remove: (catSug.catDiff?.remove || []).map(catLabel) } : null };
+  return { sku, family: row.family, facts: productFacts(row, dict || {}, cfg), dimensions: dimensionsText(row), flags: diagnose(row, data.headers, cfg, dict || {}), fields, images, categories, raw: row };
 });
 
 route("PUT", "/jobs/:id/products/:sku", async ({ id, sku, body }) => {
@@ -199,6 +209,7 @@ route("POST", "/jobs/:id/bulk", async ({ id, body }) => {
       if (body.cols?.length && !body.cols.includes(parseColumn(col).attr)) continue;
       if (body.action === "reset") { delete r.fields[col]; n++; continue; }
       if (body.action === "accept" && v.warning && !body.force) continue; // fields with guardrail warnings need a human look
+      if (body.action === "accept" && col === "categories" && !(body.cols || []).includes("categories")) continue; // categories are accepted on purpose
       if (v.status === "pending" || body.force) { v.status = body.action === "accept" ? "accepted" : "rejected"; n++; }
     }
   }
@@ -216,8 +227,13 @@ route("POST", "/jobs/:id/run", async ({ id, body, req }) => {
     const idx = meta.index || [];
     skus = (body.scope === "all" ? idx : idx.filter((i) => i.flags.some((f) => !f.startsWith("_")))).filter((i) => body.redo || !i.suggested).map((i) => i.sku);
   }
+  if (body.mode === "categories" && !body.skus?.length) {
+    const idx = meta.index || [];
+    skus = (body.scope === "all" ? idx : idx.filter((i) => i.flags.some((f) => f.startsWith("_categories:")))).map((i) => i.sku);
+  }
   meta.queue = skus;
   meta.redo = !!body.redo;
+  meta.mode = body.mode === "categories" ? "categories" : "text";
   meta.progress = { done: 0, total: skus.length, errors: 0, startedAt: new Date().toISOString() };
   await db.set(PK.job(id), meta);
   const res = await fetch(`${new URL(req.url).origin}/.netlify/functions/pim-background`, {

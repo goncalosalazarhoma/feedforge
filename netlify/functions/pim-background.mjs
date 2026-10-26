@@ -2,6 +2,8 @@
 import { db } from "../lib/store.mjs";
 import { authorized } from "../lib/http.mjs";
 import { mapLimit } from "../lib/util.mjs";
+import { proposeCategoriesAI, applyCategoryChange, splitCats } from "../lib/categories.mjs";
+import { categoryContext } from "../lib/pim.mjs";
 import { PK, getPimConfig, columnFor, isEditable, diagnose, productFacts, campaignText, optimizeProducts, cleanAi, refreshMeta, getDictionary, fieldsFor } from "../lib/pim.mjs";
 
 const nums = (s) => (String(s || "").match(/\d+(?:[.,]\d+)?/g) || []).map((x) => Number(x.replace(",", "."))).sort((a, b) => a - b).join("|");
@@ -25,6 +27,42 @@ function guard(attr, loc, value, row, cfg, dict) {
     if (lost.length || (argila && !low(value).includes(argila[0]))) return `Material do nome original alterado ("${orig}")`;
   }
   return null;
+}
+
+export async function runCategoryJob(id, { deadline = Date.now() + 13.5 * 60 * 1000 } = {}) {
+  const [cfg, dict, data, meta] = await Promise.all([getPimConfig(), getDictionary(), db.get(PK.rows(id)), db.get(PK.job(id))]);
+  const cctx = categoryContext(data.rows, dict);
+  const bySku = new Map(data.rows.map((r) => [r.sku, r]));
+  const queue = (meta.queue || []).filter((s) => bySku.has(s));
+  const batches = [];
+  for (let i = 0; i < queue.length; i += 10) batches.push(queue.slice(i, i + 10));
+  const proposals = {};
+  let errors = 0, fatal = null;
+  await mapLimit(batches, 3, async (skus) => {
+    if (fatal || Date.now() > deadline) return;
+    const items = skus.map((sku) => { const r = bySku.get(sku); return { sku, nome: r[`ATT_NAME-${cfg.sourceLocale}-${cfg.channel}`], familia: r.family, categorias_atuais: splitCats(r.categories).filter((c) => c.startsWith("ecom_")), descricao: String(r[`ATT_LONG_DESCRIPTION-${cfg.sourceLocale}-${cfg.channel}`] || "").slice(0, 300) }; });
+    try { Object.assign(proposals, await proposeCategoriesAI(items, cctx.tax, cfg)); } catch (e) { if (e.fatal) fatal = e; else errors++; console.error("[pim-cat]", e.message); }
+  });
+  const results = (await db.get(PK.results(id))) || {};
+  let changed = 0;
+  for (const [sku, p] of Object.entries(proposals)) {
+    const row = bySku.get(sku);
+    if (!row || (!p.add.length && !p.remove.length)) continue;
+    const prev = results[sku]?.fields?.categories;
+    if (prev && (prev.source === "manual" || prev.status === "accepted")) continue;
+    // merge with deterministic proposal if any
+    const add = [...new Set([...(prev?.catDiff?.add || []), ...p.add])], remove = [...new Set([...(prev?.catDiff?.remove || []), ...p.remove])].filter((c) => !add.includes(c));
+    const value = applyCategoryChange(row.categories, add, remove);
+    if (value === row.categories) continue;
+    (results[sku] ||= { fields: {} }).fields.categories = { value, source: "ai", status: "pending", reason: [prev?.reason, p.reason].filter(Boolean).join(" · "), catDiff: { add, remove } };
+    changed++;
+  }
+  await db.set(PK.results(id), results);
+  const m = await db.get(PK.job(id));
+  m.progress = { done: Object.keys(proposals).length, total: queue.length, errors, fatal: fatal?.message, finishedAt: new Date().toISOString(), remaining: 0, mode: "categories", changed };
+  m.queue = [];
+  await db.set(PK.job(id), m);
+  return m.progress;
 }
 
 export async function runPimJob(id, { deadline = Date.now() + 13.5 * 60 * 1000 } = {}) {
@@ -118,7 +156,8 @@ export default async (req) => {
   const { id } = await req.json().catch(() => ({}));
   if (!id) return new Response("id em falta", { status: 400 });
   try {
-    const p = await runPimJob(id);
+    const meta0 = await db.get(PK.job(id));
+    const p = meta0?.mode === "categories" ? await runCategoryJob(id) : await runPimJob(id);
     console.log("[pim] done", id, JSON.stringify(p));
     await refreshMeta(id, await db.get(PK.job(id))); // refresh suggested/pending counts
   } catch (e) {
