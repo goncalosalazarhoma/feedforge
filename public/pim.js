@@ -39,12 +39,13 @@
     main.innerHTML = `
       <div class="head"><div><h1>PIM optimizer</h1><div class="muted">Diagnóstico e otimização de exports do Akeneo (nome, nome PLP, descrição longa SEO/GEO, PT + ES). Devolve um XLSX só com o <code>sku</code> e as colunas alteradas, pronto a importar.</div></div></div>
       <div class="chips" style="margin-bottom:14px">
-        ${[["files", "Ficheiros"], ["config", "Campos & AI"], ["dict", "Dicionário Akeneo"]].map(([k, l]) => `<span class="chip ${P.tab === k ? "on" : ""}" data-tab="${k}">${l}</span>`).join("")}
+        ${[["files", "Ficheiros"], ["labels", "Labels"], ["config", "Campos & AI"], ["dict", "Dicionário Akeneo"]].map(([k, l]) => `<span class="chip ${P.tab === k ? "on" : ""}" data-tab="${k}">${l}</span>`).join("")}
       </div>
       <div id="pim-body"></div>`;
     $$("[data-tab]", main).forEach((c) => (c.onclick = () => { P.tab = c.dataset.tab; P.jobId = null; VIEWS.pim(main); }));
     const body = $("#pim-body");
     if (P.tab === "config") return drawConfig(body);
+    if (P.tab === "labels") return drawLabels(body);
     if (P.tab === "dict") return drawDict(body);
     if (P.jobId) return drawJob(body);
     return drawFiles(body);
@@ -111,7 +112,8 @@
           <button class="btn" id="pim-run-all" ${j.running ? "disabled" : ""}>Otimizar todos</button>
           <button class="btn" id="pim-redo" ${j.running ? "disabled" : ""} title="Volta a gerar com AI todos os produtos, substituindo sugestões AI já aceites (as tuas edições manuais mantêm-se)">Refazer AI</button>
           <button class="btn" id="pim-accept">Aceitar todas as pendentes</button>
-          <button class="btn primary" id="pim-export">⬇ Exportar XLSX</button>
+          <button class="btn primary" id="pim-export" title="Só sku + colunas alteradas — recomendado para importar no Akeneo">⬇ Exportar alterações</button>
+          <button class="btn" id="pim-export-full" title="Todas as colunas do ficheiro original (+ colunas ES novas), com as alterações aceites aplicadas">⬇ Ficheiro completo</button>
         </div>
       </div>
       ${j.running || (pr && pr.remaining) ? `<div class="callout ${j.running ? "info" : ""}" style="margin-bottom:12px">${j.running ? "⏳ AI a trabalhar" : "Pausado"}: ${pr?.done ?? 0}/${pr?.total ?? 0} produtos${pr?.errors ? ` · ${pr.errors} erros` : ""}${pr?.fatal ? ` · <b class="err">${esc(pr.fatal)}</b>` : ""}${!j.running && pr?.remaining ? ` · ${pr.remaining} por fazer — carrega em "Otimizar sinalizados" para continuar` : ""}</div>` : ""}
@@ -120,6 +122,14 @@
           ${fc.length ? `<table>${fc.map(([f, n]) => `<tr class="click" data-flag="${esc(f)}"><td>${esc(flagLabel(f))}</td><td style="text-align:right"><b>${n}</b></td></tr>`).join("")}</table>` : `<p class="muted">Sem problemas detetados.</p>`}
         </div>
         <div class="card"><h2>Estado</h2><div id="pim-kpis" class="muted">…</div></div>
+      </div>
+      <div class="grid two">
+        <div class="card"><h2>Preenchido automaticamente (sem AI)</h2>
+          ${Object.keys(j.autoCount || {}).length ? `<table>${Object.entries(j.autoCount).sort((a, b) => b[1] - a[1]).map(([k, n]) => { const [src, col] = k.split(/:(.+)/); return `<tr><td class="mono small">${esc(col)}</td><td><span class="badge ${src === "label" ? "ai" : ""}">${src === "label" ? "label" : "dedução"}</span></td><td style="text-align:right"><b>${n}</b></td></tr>`; }).join("")}</table>
+            <p class="muted small">Só preenche células vazias. Vês a origem de cada valor no produto (ex.: "Calculado: 62 x 26 x 17 cm").</p>` : `<p class="muted">Nada a preencher.</p>`}
+          <button class="btn sm" id="pim-auto">Recalcular deduções e labels</button>
+        </div>
+        <div class="card"><h2>Imagens</h2><div id="pim-img">A carregar…</div></div>
       </div>
       <div class="card">
         <div class="row" style="margin-bottom:10px">
@@ -134,13 +144,39 @@
     $("#pim-run-all").onclick = (e) => run("all", e.target);
     $("#pim-redo").onclick = async (e) => { if (await ask("Voltar a gerar com AI todos os produtos? As sugestões AI já aceites são substituídas; as tuas edições manuais mantêm-se.", { ok: "Refazer AI" })) run("all", e.target, true); };
     $("#pim-accept").onclick = (e) => guard(async () => { const r = await papi(`/jobs/${P.jobId}/bulk`, { method: "POST", body: { action: "accept" } }); toast(`${r.changed} sugestões aceites`); drawJob(box); }, e.target);
-    $("#pim-export").onclick = (e) => guard(() => exportXlsx(), e.target);
+    $("#pim-export").onclick = (e) => guard(() => exportXlsx(false), e.target);
+    $("#pim-export-full").onclick = (e) => guard(() => exportXlsx(true), e.target);
     $$("[data-flag]", box).forEach((tr) => (tr.onclick = () => { P.list = { ...P.list, flag: tr.dataset.flag, filter: "", page: 1 }; drawJob(box); }));
     $$("[data-f]", box).forEach((c) => (c.onclick = () => { P.list = { ...P.list, filter: c.dataset.f, flag: "", page: 1 }; drawJob(box); }));
     let t; $("#pim-q").oninput = (e) => { clearTimeout(t); t = setTimeout(() => { P.list.q = e.target.value; P.list.page = 1; drawList(); }, 250); };
+    $("#pim-auto").onclick = (e) => guard(async () => { const r = await papi(`/jobs/${P.jobId}/auto`, { method: "POST" }); toast(`${r.fixes} deduções · ${r.labels} labels`); drawJob(box); }, e.target);
+    drawImages();
     drawList();
     clearTimeout(P.poll);
     if (j.running) P.poll = setTimeout(() => { if (S.view === "pim" && P.jobId === j.id) drawJob(box); }, 6000);
+  }
+
+  async function drawImages() {
+    const box = $("#pim-img");
+    if (!box) return;
+    const im = await papi(`/jobs/${P.jobId}/images`);
+    const s = im.summary;
+    const worst = Object.entries(im.items || {}).map(([sku, v]) => ({ sku, ...v })).sort((a, b) => (a.score ?? a.quantityScore) - (b.score ?? b.quantityScore)).slice(0, 12);
+    box.innerHTML = `${s ? `
+      <div class="grid k" style="margin-bottom:10px">
+        <div class="kpi"><div class="v">${s.avgScore ?? "—"}</div><div class="l">pontuação média /100</div></div>
+        <div class="kpi"><div class="v">${s.noImage}</div><div class="l">sem imagem de produto</div></div>
+        <div class="kpi"><div class="v">${s.lessThan3}</div><div class="l">com menos de 3 fotos</div></div>
+        <div class="kpi"><div class="v">${s.noAmbiance}</div><div class="l">sem imagem de ambiente</div></div>
+        <div class="kpi"><div class="v">${s.lowRes}</div><div class="l">resolução &lt; 800 px</div></div>
+        <div class="kpi"><div class="v">${s.duplicatedCodes}</div><div class="l">códigos de asset duplicados</div></div>
+      </div>
+      <p class="muted small">${s.matchedInFeed}/${s.products} produtos encontrados no feed · ${s.probed} imagens medidas · avaliado ${fmtDate(im.evaluatedAt)}. Resolução, formato e peso vêm dos links públicos do feed; quantidade dos códigos do Akeneo.</p>
+      <table>${worst.map((w) => `<tr class="click" data-sku="${esc(w.sku)}"><td class="mono">${esc(w.sku)}</td><td><b>${w.score ?? w.quantityScore}</b></td><td class="small">${esc(w.issues.slice(0, 2).join(" · "))}</td></tr>`).join("")}</table>`
+      : `<p class="muted">Ainda não avaliado.</p>`}
+      <button class="btn sm" id="pim-img-run" style="margin-top:8px">${s ? "Reavaliar imagens" : "Avaliar imagens"}</button>`;
+    $$("tr[data-sku]", box).forEach((tr) => (tr.onclick = () => openSku(tr.dataset.sku)));
+    $("#pim-img-run").onclick = (e) => guard(async () => { await papi(`/jobs/${P.jobId}/images`, { method: "POST" }); toast("A avaliar imagens (1–3 min)…"); setTimeout(drawImages, 45000); }, e.target);
   }
 
   async function run(scope, btn, redo = false) {
@@ -166,7 +202,11 @@
       const comp = items.filter((i) => i.completeness).map((i) => i.completeness);
       k.innerHTML = `<div class="grid k">
         <div><div class="kpi"><div class="v">${all.total}</div><div class="l">produtos</div></div></div>
-        <div><div class="kpi"><div class="v">${comp.length ? Math.round(comp.reduce((a, b) => a + b, 0) / comp.length) + "%" : "—"}</div><div class="l">completude média (Akeneo)</div></div></div>
+        ${P.job.completeness?.pt?.[0] != null ? `
+        <div><div class="kpi"><div class="v">${P.job.completeness.pt[0]}% → <span style="color:var(--ok)">${P.job.completeness.pt[1]}%</span></div><div class="l">completude média PT (atual → com alterações aceites)</div></div></div>
+        <div><div class="kpi"><div class="v">${P.job.completeness.es[0]}% → <span style="color:var(--ok)">${P.job.completeness.es[1]}%</span></div><div class="l">completude média ES (estimada)</div></div></div>
+        <div><div class="kpi"><div class="v">${P.job.completeness.complete.pt[0]} → ${P.job.completeness.complete.pt[1]}</div><div class="l">produtos a 100% PT</div></div></div>`
+        : `<div><div class="kpi"><div class="v">${comp.length ? Math.round(comp.reduce((a, b) => a + b, 0) / comp.length) + "%" : "—"}</div><div class="l">completude média (Akeneo)</div></div></div>`}
         <div><div class="kpi"><div class="v">${sum((i) => (i.suggested ? 1 : 0))}</div><div class="l">com sugestões</div></div></div>
         <div><div class="kpi"><div class="v">${sum((i) => i.pending)}</div><div class="l">campos por rever</div></div></div>
         <div><div class="kpi"><div class="v">${sum((i) => i.accepted)}</div><div class="l">campos aceites</div></div></div>
@@ -174,9 +214,9 @@
     }
     if (!r.total) { box.innerHTML = `<div class="empty">Nenhum produto.</div>`; return; }
     const pages = Math.ceil(r.total / r.size);
-    box.innerHTML = `<table><tr><th>SKU</th><th>Nome</th><th>Família</th><th>Compl.</th><th>Problemas</th><th>Sugestões</th></tr>
+    box.innerHTML = `<table><tr><th>SKU</th><th>Nome</th><th>Família</th><th>Completude PT · ES</th><th>Problemas</th><th>Sugestões</th></tr>
       ${r.items.map((i) => `<tr class="click" data-sku="${esc(i.sku)}"><td class="mono">${esc(i.sku)}</td><td><div class="trunc">${esc(i.name)}</div></td><td class="small muted">${esc(i.family.replace(/^FAM_/, ""))}</td>
-        <td class="small">${i.completeness ?? "—"}%</td>
+        <td class="small">${i.comp ? `${i.comp.pt[0]}${i.comp.pt[1] !== i.comp.pt[0] ? `→<b style="color:var(--ok)">${i.comp.pt[1]}</b>` : ""}% <span class="muted">· ES ${i.comp.es[0]}${i.comp.es[1] !== i.comp.es[0] ? `→<b style="color:var(--ok)">${i.comp.es[1]}</b>` : ""}%</span>` : `${i.completeness ?? "—"}%`}</td>
         <td>${i.flags.filter((f) => !f.includes(":missing_es") && !f.startsWith("_completeness")).slice(0, 3).map((f) => `<span class="badge flag">${esc(flagLabel(f))}</span>`).join("")}${i.seasonal ? `<span class="badge ai">sazonal</span>` : ""}</td>
         <td>${i.warnings ? `<span class="badge ex">⚠ ${i.warnings}</span>` : ""}${i.suggested ? `${i.pending ? `<span class="badge edit">${i.pending} por rever</span>` : ""}${i.accepted ? `<span class="badge new">${i.accepted} aceites</span>` : ""}` : `<span class="muted small">—</span>`}</td></tr>`).join("")}</table>
       <div class="pager"><span class="muted">${r.total} produtos · página ${r.page}/${pages}</span><button class="btn sm" id="pp" ${r.page <= 1 ? "disabled" : ""}>←</button><button class="btn sm" id="pn" ${r.page >= pages ? "disabled" : ""}>→</button></div>`;
@@ -196,12 +236,16 @@
       <div class="head"><div><div class="muted mono">${esc(d.sku)} · ${esc(d.family)}</div><h1>${esc(d.facts.nome_atual || "")}</h1></div>
         <div class="row"><button class="btn" id="ps-close">Fechar</button><button class="btn" id="ps-accept-all">Aceitar tudo</button><button class="btn primary" id="ps-save">Guardar</button></div></div>
       ${d.flags.length ? `<div class="callout" style="margin-bottom:12px">${d.flags.map((f) => esc(f.msg)).join(" · ")}</div>` : ""}
-      <div class="card" style="margin-bottom:12px"><h2>Dados usados pela AI</h2><div class="small">${facts.map(([k, v]) => `<span class="badge">${esc(k)}: ${esc(String(v).slice(0, 80))}</span>`).join(" ")}</div></div>
+      ${d.images ? `<div class="card" style="margin-bottom:12px"><h2>Imagens · ${d.images.score ?? d.images.quantityScore}/100</h2>
+        <div class="small muted" style="margin-bottom:6px">${d.images.product.effective} foto(s) de produto${d.images.product.duplicated ? ` (${d.images.product.raw} códigos)` : ""} · ${d.images.ambiance.effective} de ambiente${d.images.issues.length ? " · " + esc(d.images.issues.join(" · ")) : ""}</div>
+        <div class="row">${d.images.feedImages.map((im) => `<div style="text-align:center"><img src="${esc(im.url)}" style="width:96px;height:96px;object-fit:cover;border-radius:6px;background:var(--soft)" loading="lazy" onerror="this.style.opacity=.2"/><div class="small muted">${im.w ? `${im.w}×${im.h}` : esc(im.error || "")}${im.kb ? ` · ${im.kb} KB` : ""}</div></div>`).join("")}</div></div>` : ""}
+      <div class="card" style="margin-bottom:12px"><h2>Dados usados pela AI</h2><div class="small">${facts.map(([k, v]) => `<span class="badge">${esc(k)}: ${esc((typeof v === "object" ? Object.entries(v).map(([a, b]) => `${a} ${b}`).join(", ") : String(v)).slice(0, 80))}</span>`).join(" ")}</div></div>
       ${d.fields.map((f) => {
         const s = f.suggestion;
         return `<div class="card" data-col="${esc(f.col)}">
           <div class="row"><b class="mono">${esc(f.col)}</b>${f.editable ? "" : `<span class="badge lock">🔒 trancado</span>`}<span class="grow"></span>
             ${s?.warning ? `<span class="badge ex" title="${esc(s.warning)}">⚠ ${esc(s.warning)}</span>` : ""}
+            ${s?.reason ? `<span class="badge" title="Origem do valor">ℹ ${esc(s.reason)}</span>` : ""}
             ${s ? `<span class="badge ${s.status === "accepted" ? "new" : s.status === "rejected" ? "ex" : "edit"}">${s.status === "accepted" ? "aceite" : s.status === "rejected" ? "rejeitada" : "por rever"}</span><span class="badge ${s.source === "ai" ? "ai" : ""}">${esc(s.source)}</span>` : ""}</div>
           <div class="grid two" style="margin-top:8px">
             <div><div class="small muted">Atual</div><div class="small" style="white-space:pre-wrap">${esc(f.current) || "<i class='muted'>vazio</i>"}</div></div>
@@ -234,15 +278,76 @@
     }, e.target);
   }
 
-  async function exportXlsx() {
-    const r = await papi(`/jobs/${P.jobId}/export`);
-    if (!r.rows.length) return toast("Ainda não há alterações aceites para exportar", true);
+  async function exportXlsx(full) {
+    const r = await papi(`/jobs/${P.jobId}/export${full ? "?full=1" : ""}`);
+    if (!r.changes && !full) return toast("Ainda não há alterações aceites para exportar", true);
     const XLSX = await loadXlsx();
     const ws = XLSX.utils.aoa_to_sheet([r.headers, ...r.rows.map((row) => r.headers.map((h) => row[h] ?? ""))]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
-    XLSX.writeFile(wb, `${P.job.name}-otimizado.xlsx`);
-    toast(`${r.rows.length} produtos · ${r.changes} campos exportados`);
+    XLSX.writeFile(wb, `${P.job.name}-${full ? "completo" : "alteracoes"}.xlsx`);
+    toast(full ? `${r.rows.length} produtos · ${r.headers.length} colunas · ${r.changes} campos alterados` : `${r.rows.length} produtos · ${r.changes} campos exportados`);
+  }
+
+  // ================================================================ labels (merchandising rules)
+  const OPS = { equals: "é igual a", not_equals: "é diferente de", contains: "contém", not_contains: "não contém", in: "está na lista", empty: "está vazio", not_empty: "não está vazio", gt: ">", lt: "<" };
+  let ldraft = null;
+  async function drawLabels(box) {
+    const { config: c } = await papi("/config");
+    P.cfg = c;
+    if (!ldraft) ldraft = JSON.parse(JSON.stringify(c.labelRules || []));
+    const jobs = await papi("/jobs");
+    let headers = [];
+    if (jobs[0]) { const l = await papi(`/jobs/${jobs[0].id}/products?size=1`); if (l.items[0]) headers = Object.keys((await papi(`/jobs/${jobs[0].id}/products/${encodeURIComponent(l.items[0].sku)}`)).raw); }
+    const condFields = [...new Set(["family", "categories", "ATT_MARKETING_TYPE-pt_PT", "ATT_SEASONALITY-pt_PT", "ATT_BROCHURE_COLLECTION", "ATT_BRAND", "ATT_SUPPLIER_COLLECTION", "ATT_ONLINE_STATUS", "ATT_PVP-EUR", ...headers])].sort();
+    const targetFields = [...new Set([...headers.filter((h) => c.labelFields.includes(h.split("-")[0]) && !h.includes("erp_channel")), ...c.labelFields.filter((a) => !headers.some((h) => h.split("-")[0] === a)), "Etiqueta_homa-es_ES-ecommerce"])].sort();
+    const opt = (list, sel) => list.map((f) => `<option ${f === sel ? "selected" : ""}>${esc(f)}</option>`).join("");
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Lisbon" }).format(new Date());
+    const status = (r) => { if (r.enabled === false) return ["", "desligada"]; const s = r.schedule || {}; if (s.mode && s.mode !== "always") { if (s.start && today < s.start) return ["ai", "agendada"]; if (s.mode === "range" && s.end && today > s.end) return ["ex", "expirada"]; } return ["new", "ativa"]; };
+    box.innerHTML = `
+      <div class="head" style="margin-bottom:12px"><div class="muted">Regras para os campos de merchandising do Akeneo (${c.labelFields.map((x) => `<code>${esc(x)}</code>`).join(" ")}). Funcionam como os labels do feed: SE condição → ENTÃO valor, com agendamento entre datas ou até removeres. Aplicadas a todos os ficheiros e incluídas no export.</div>
+        <div class="row"><button class="btn" id="lb-add">＋ Regra</button><button class="btn primary" id="lb-save">Guardar e aplicar</button></div></div>
+      <div class="callout info" style="margin-bottom:12px">Ex.: "categories contém Christmas → ATT_THEME = Natal" · "ATT_MARKETING_TYPE = PROMOCIONAL, entre 20/11 e 30/11 → Etiqueta_homa = 1" · "ATT_BROCHURE_COLLECTION = T6/26 → ATT_NEW = 1, ATT_START_DATE_NEW = 2026-11-01". Valores booleanos: 1 / 0; datas: AAAA-MM-DD.</div>
+      ${ldraft.length ? ldraft.map((r, i) => { const [cls, txt] = status(r); return `
+        <div class="rule ${txt !== "ativa" ? "off" : ""}" data-i="${i}">
+          <div class="rule-head"><label class="chk"><input type="checkbox" data-k="enabled" ${r.enabled !== false ? "checked" : ""}/></label><input class="name" data-k="name" value="${esc(r.name)}"/><span class="badge ${cls}">${txt}</span><button class="btn sm ghost danger" data-del="${i}">✕</button></div>
+          <div class="rule-body">
+            <div class="line"><span class="kw">Quando</span><select data-s="mode">${[["always", "Sempre (até eu remover)"], ["from", "A partir de… (até eu remover)"], ["range", "Entre datas"]].map(([k, l]) => `<option value="${k}" ${(r.schedule?.mode || "always") === k ? "selected" : ""}>${l}</option>`).join("")}</select>
+              ${r.schedule?.mode && r.schedule.mode !== "always" ? `<input type="date" data-s="start" value="${esc(r.schedule.start || today)}"/>` : ""}${r.schedule?.mode === "range" ? `<span class="muted">até</span><input type="date" data-s="end" value="${esc(r.schedule.end || "")}"/>` : ""}</div>
+            <div class="line"><span class="kw">Se</span>${r.conditions.length ? `<select data-k="match"><option value="all" ${r.match !== "any" ? "selected" : ""}>todas</option><option value="any" ${r.match === "any" ? "selected" : ""}>qualquer</option></select>` : `<span class="muted">todos os produtos</span>`}<button class="btn sm" data-addc="${i}">＋ condição</button></div>
+            ${r.conditions.map((cd, ci) => `<div class="line" data-ci="${ci}"><span class="kw"></span><select data-c="field">${opt(condFields, cd.field)}</select><select data-c="op">${Object.entries(OPS).map(([k, l]) => `<option value="${k}" ${k === cd.op ? "selected" : ""}>${l}</option>`).join("")}</select>${["empty", "not_empty"].includes(cd.op) ? "" : `<input class="val" data-c="value" value="${esc(cd.value || "")}"/>`}<button class="btn sm ghost" data-delc="${ci}">✕</button></div>`).join("")}
+            <div class="line"><span class="kw">Então</span><button class="btn sm" data-adda="${i}">＋ valor</button></div>
+            ${r.actions.map((a, ai) => `<div class="line" data-ai="${ai}"><span class="kw"></span><select data-a="field">${opt(targetFields, a.field)}</select><span class="muted">=</span><input class="val" data-a="value" value="${esc(a.value || "")}" placeholder="valor (1/0, texto, AAAA-MM-DD)"/><button class="btn sm ghost" data-dela="${ai}">✕</button></div>`).join("")}
+          </div></div>`; }).join("") : `<div class="card empty">Sem regras de labels.</div>`}`;
+    const redraw = () => drawLabels(box);
+    $("#lb-add").onclick = () => { ldraft.push({ id: Math.random().toString(36).slice(2, 9), name: "Nova regra", enabled: true, match: "all", schedule: { mode: "always" }, conditions: [{ field: "categories", op: "contains", value: "Christmas" }], actions: [{ type: "set", field: targetFields[0] || "ATT_THEME", value: "" }] }); redraw(); };
+    $$(".rule", box).forEach((el) => {
+      const r = ldraft[Number(el.dataset.i)];
+      el.oninput = el.onchange = (e) => {
+        const t = e.target;
+        if (t.dataset.k) r[t.dataset.k] = t.type === "checkbox" ? t.checked : t.value;
+        if (t.dataset.s) { r.schedule = { mode: "always", ...(r.schedule || {}), [t.dataset.s]: t.value }; if (r.schedule.mode !== "always" && !r.schedule.start) r.schedule.start = today; }
+        const ci = t.closest("[data-ci]")?.dataset.ci, ai = t.closest("[data-ai]")?.dataset.ai;
+        if (t.dataset.c && ci != null) r.conditions[ci][t.dataset.c] = t.value;
+        if (t.dataset.a && ai != null) { r.actions[ai][t.dataset.a] = t.value; r.actions[ai].type = "set"; }
+        if (e.type === "change" && (t.dataset.s === "mode" || t.dataset.c === "op" || t.dataset.k === "enabled")) redraw();
+      };
+      el.onclick = async (e) => {
+        const d = e.target.dataset;
+        if (d.del != null && (await ask(`Apagar a regra "${r.name}"?`, { ok: "Apagar", danger: true }))) { ldraft.splice(Number(d.del), 1); return redraw(); }
+        if (d.addc != null) { r.conditions.push({ field: "categories", op: "contains", value: "" }); redraw(); }
+        if (d.delc != null) { r.conditions.splice(Number(d.delc), 1); redraw(); }
+        if (d.adda != null) { r.actions.push({ type: "set", field: targetFields[0], value: "" }); redraw(); }
+        if (d.dela != null) { r.actions.splice(Number(d.dela), 1); redraw(); }
+      };
+    });
+    $("#lb-save").onclick = (e) => guard(async () => {
+      await papi("/config", { method: "PUT", body: { labelRules: ldraft } });
+      let n = 0;
+      for (const j of jobs) { const r = await papi(`/jobs/${j.id}/auto`, { method: "POST" }); n += r.labels; }
+      toast(`Regras guardadas · ${n} labels aplicados`);
+      ldraft = null; redraw();
+    }, e.target);
   }
 
   // ================================================================ config
