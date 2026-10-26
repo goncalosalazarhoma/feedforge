@@ -8,7 +8,8 @@ export const PK = {
   jobs: () => "pim/jobs/index",
   job: (id) => `pim/jobs/${id}/meta`,
   rows: (id) => `pim/jobs/${id}/rows`,
-  results: (id) => `pim/jobs/${id}/results`,   // { [sku]: { fields: { col: { value, source: "ai"|"fix"|"manual", status: "pending"|"accepted"|"rejected" } }, at } }
+  results: (id) => `pim/jobs/${id}/results`,
+  images: (id) => `pim/jobs/${id}/images`,     // { evaluatedAt, items: { [sku]: { ... } } }   // { [sku]: { fields: { col: { value, source: "ai"|"fix"|"manual", status: "pending"|"accepted"|"rejected" } }, at } }
   lock: (id) => `pim/jobs/${id}/lock`,
 };
 
@@ -25,6 +26,11 @@ export function defaultPimConfig() {
     aiFields: ["ATT_NAME", "ATT_PLP_NAME", "ATT_LONG_DESCRIPTION"],
     // generated only for the other locales (PT stays as is) — both are required for ES completeness
     translateOnly: ["ATT_SHORT_DESCRIPTION", "ATT_PLP_DESCRIPTION"],
+    // attributes filled from other data without AI (see enrichmentFixes)
+    enrichable: ["att_colors", "ATT_BOX_VOLUME_SUPPLIER", "ATT_COMPOSITION", "ATT_OUTDOOR", "ATT_SUPPLIER_COLLECTION", "ATT_PIECES", "ATT_CAPACITY", "ATT_VOLTAGE", "ATT_POWER_WATTS", "ATT_SCENTFLAVOUR", "ATT_LED"],
+    // merchandising "labels" managed by label rules
+    labelFields: ["Etiqueta_homa", "ATT_NEW", "ATT_START_DATE_NEW", "ATT_DATA_FIM_NEW", "ATT_BEST", "ATT_BEST_START_DATE", "ATT_BEST_END_DATE", "ATT_ONLINE_EXCLUSIVE", "ATT_THEME", "ATT_BROCHURE_COLLECTION"],
+    labelRules: [],
     seasonalValues: ["permanent_seasonal", "Promocional"],
     seasonalCategoryPattern: "Christmas|Natal|Halloween|Easter|Pascoa|Summer|Verao",
     limits: { ATT_NAME: 70, ATT_PLP_NAME: 60, ATT_SHORT_DESCRIPTION: 40, longMin: 400, longMax: 1200 },
@@ -69,8 +75,11 @@ export function columnFor(headers, attr, locale, channel) {
 
 export function isEditable(col, cfg) {
   const p = parseColumn(col);
-  if (p.unit || p.currency) return false;
+  if (p.currency) return false;
   if (p.channel && p.channel !== cfg.channel) return false;
+  if ((cfg.enrichable || []).includes(p.attr)) return true;          // value (+ -unit for metrics)
+  if (p.unit) return false;
+  if ((cfg.labelFields || []).includes(p.attr)) return true;
   if (cfg.editable.includes(p.attr)) return true;
   // translate-only attributes: writable in the other locales, never in the source locale
   if ((cfg.translateOnly || []).includes(p.attr) && p.locale && p.locale !== cfg.sourceLocale) return true;
@@ -358,6 +367,39 @@ export function cleanAi(attr, value, cfg) {
 }
 
 // ---------------------------------------------------------------------------- job index
+// ---------------------------------------------------------------------------- completeness estimate
+// Akeneo gives the current PT ratio. We estimate PT after the accepted changes and ES before/after by
+// counting required attributes (family, channel) that change state, relative to that ratio.
+export function estimateCompleteness(row, headers, cfg, dict, fields = {}) {
+  const req = dict?.families?.[row.family]?.required?.[cfg.channel];
+  const base = Number(row[`completeness_ratio-${cfg.sourceLocale}-${cfg.channel}`]);
+  if (!req?.length || !Number.isFinite(base)) return null;
+  const R = req.length, L = cfg.sourceLocale, C = cfg.channel;
+  const others = cfg.targetLocales.filter((l) => l !== L);
+  const after = { ...row };
+  for (const [col, v] of Object.entries(fields)) if (v.status === "accepted" && String(v.value).trim()) after[col] = v.value;
+  const cols = {};
+  for (const h of headers) { const p = parseColumn(h); if (!p.unit) (cols[p.attr] ||= []).push(p); }
+  const localizable = (a) => (cols[a] || []).some((p) => p.locale) || [...cfg.aiFields, ...(cfg.translateOnly || []), "ATT_SEASONALITY"].includes(a);
+  const filled = (r, a, loc) => {
+    if (!localizable(a)) return null; // non-localizable: same in every locale, does not change here
+    const col = columnFor(headers, a, loc, C);
+    return String(r[col] ?? "").trim() !== "";
+  };
+  let dPt = 0;
+  for (const a of req) { const b = filled(row, a, L), n = filled(after, a, L); if (b === false && n === true) dPt++; if (b === true && n === false) dPt--; }
+  const ptAfter = base + (100 * dPt) / R;
+  const es = (r, ptRatio) => {
+    const loc = others[0];
+    if (!loc) return null;
+    let d = 0;
+    for (const a of req) { const p = filled(r, a, L), e = filled(r, a, loc); if (p === null) continue; if (p && !e) d--; if (!p && e) d++; }
+    return ptRatio + (100 * d) / R;
+  };
+  const clamp = (x) => (x == null ? null : Math.max(0, Math.min(100, Math.round(x))));
+  return { pt: [clamp(base), clamp(ptAfter)], es: [clamp(es(row, base)), clamp(es(after, ptAfter))] };
+}
+
 export function buildIndex(rows, headers, cfg, dict, results = {}) {
   return rows.map((r) => {
     const flags = diagnose(r, headers, cfg, dict);
@@ -369,6 +411,7 @@ export function buildIndex(rows, headers, cfg, dict, results = {}) {
       name: r[`ATT_NAME-${cfg.sourceLocale}-${cfg.channel}`] || r[`ATT_LABEL-${cfg.sourceLocale}`] || "",
       family: r.family || "",
       completeness: Number(r[`completeness_ratio-${cfg.sourceLocale}-${cfg.channel}`]) || null,
+      comp: estimateCompleteness(r, headers, cfg, dict, res),
       seasonal: isSeasonal(r, cfg),
       flags: flags.map((f) => `${f.field}:${f.code}`),
       errors: flags.filter((f) => f.severity === "error").length,
@@ -386,6 +429,11 @@ export async function refreshMeta(id, meta) {
   const fc = {};
   for (const i of meta.index) for (const f of i.flags) fc[f] = (fc[f] || 0) + 1;
   meta.flagCount = fc;
+  const autoCount = {};
+  for (const r of Object.values(results || {})) for (const [col, v] of Object.entries(r.fields || {})) if ((v.source === "fix" || v.source === "label") && !col.endsWith("-unit")) { const k = `${v.source}:${col}`; autoCount[k] = (autoCount[k] || 0) + 1; }
+  meta.autoCount = autoCount;
+  const avg = (k, i) => { const v = meta.index.map((x) => x.comp?.[k]?.[i]).filter((x) => x != null); return v.length ? Math.round((v.reduce((a, b) => a + b, 0) / v.length) * 10) / 10 : null; };
+  meta.completeness = { pt: [avg("pt", 0), avg("pt", 1)], es: [avg("es", 0), avg("es", 1)], complete: { pt: [meta.index.filter((x) => x.comp?.pt[0] === 100).length, meta.index.filter((x) => x.comp?.pt[1] === 100).length], es: [meta.index.filter((x) => x.comp?.es[0] === 100).length, meta.index.filter((x) => x.comp?.es[1] === 100).length] } };
   meta.count = data.rows.length;
   meta.updatedAt = new Date().toISOString();
   await db.set(PK.job(id), meta);
@@ -394,16 +442,91 @@ export async function refreshMeta(id, meta) {
 
 
 // ---------------------------------------------------------------------------- deterministic fixes (no AI)
+// Returns { col: { value, reason } }. Only fills EMPTY cells, never overwrites.
 export function deterministicFixes(row, headers, cfg, dict) {
   const out = {};
   const L = cfg.sourceLocale;
   const req = dict?.families?.[row.family]?.required?.[cfg.channel] || [];
-  // ATT_SEASONALITY is localizable: copy the option code to other locales when required by the family
+  const empty = (c) => String(row[c] ?? "").trim() === "";
+  const set = (col, value, reason) => { if (empty(col) && isEditable(col, cfg)) out[col] = { value: String(value), reason }; };
+  const text = [row[`ATT_NAME-${L}-${cfg.channel}`], row[`ATT_LONG_DESCRIPTION-${L}-${cfg.channel}`], row.ATT_SUPPLIERS_ARTICLE_DESCRIPTION].filter(Boolean).join(" ");
+  const name = String(row[`ATT_NAME-${L}-${cfg.channel}`] || "");
+
+  // 1) ATT_SEASONALITY is localizable: copy the option code to other locales when required
   if (req.includes("ATT_SEASONALITY") && row[`ATT_SEASONALITY-${L}`]) {
     for (const loc of cfg.targetLocales.filter((l) => l !== L)) {
       const col = columnFor(headers, "ATT_SEASONALITY", loc, null);
-      if (!row[col]) out[col] = row[`ATT_SEASONALITY-${L}`];
+      if (empty(col)) out[col] = { value: row[`ATT_SEASONALITY-${L}`], reason: "Copiado do PT (obrigatório na família)" };
     }
+  }
+  // 2) Cores ← Cor variante
+  if (row.ATT_COLOR) set("att_colors", row.ATT_COLOR, "Copiado de Cor variante (ATT_COLOR)");
+  // 3) Volume da caixa ← C x L x A (cm → m³)
+  const bl = num(row.ATT_BOX_LENGHT_SUPLIER), bw = num(row.ATT_BOX_WIDE_SUPPLIER), bh = num(row.ATT_BOX_HEIGHT_SUPPLIER);
+  const cm = (a) => !row[`${a}-unit`] || row[`${a}-unit`] === "CENTIMETER";
+  if (bl && bw && bh && cm("ATT_BOX_LENGHT_SUPLIER") && cm("ATT_BOX_WIDE_SUPPLIER") && cm("ATT_BOX_HEIGHT_SUPPLIER") && empty("ATT_BOX_VOLUME_SUPPLIER")) {
+    set("ATT_BOX_VOLUME_SUPPLIER", ((bl * bw * bh) / 1e6).toFixed(4), `Calculado: ${bl} x ${bw} x ${bh} cm`);
+    if (out.ATT_BOX_VOLUME_SUPPLIER) out["ATT_BOX_VOLUME_SUPPLIER-unit"] = { value: "CUBIC_METER", reason: "Unidade do volume" };
+  }
+  // 4) Composição ← Material (+ % quando o texto diz "100%")
+  if (row.ATT_MATERIAL && empty("ATT_COMPOSITION") && (req.includes("ATT_COMPOSITION") || /TEXTILE|MATTRESS|PLUSH|SOFA/.test(row.family || ""))) {
+    const mats = String(row.ATT_MATERIAL).split(",").map((m) => m.trim()).filter(Boolean);
+    const pct = mats.length === 1 && /100\s?%/.test(text) ? "100" : null;
+    set("ATT_COMPOSITION", JSON.stringify(mats.map((m) => (pct ? { TBL_ATT_MATERIAL: m, TBL_ATT_COMPO_PERCENTAGE: pct } : { TBL_ATT_MATERIAL: m }))), pct ? "Material + 100% indicado na descrição" : "A partir do Material (sem percentagem)");
+  }
+  // 5) Atividade de ar livre ← categorias de jardim/exterior
+  const garden = /garden|exterior|outdoor|jardim|pool|piscina/i.test(row.categories || "");
+  if (garden) set("ATT_OUTDOOR", "1", "Categoria de jardim/exterior");
+  else if (req.includes("ATT_OUTDOOR")) set("ATT_OUTDOOR", "0", "Obrigatório na família; sem categoria de exterior");
+  // 6) Coleção ← palavra em MAIÚSCULAS no nome (ex.: TIMELESS, SHINE)
+  const brands = Object.keys(dict?.options?.ATT_BRAND || {}).map((b) => b.replace(/_/g, " "));
+  const stop = new Set(["SMART", "COOK", "LED", "USB", "XL", "XXL", "PVC", "MDF", "EVA", "ABS", "WC", "TV", "PU", "PET", "PLA", "TNT", "BBQ", "LCD", ...brands]);
+  const coll = (name.match(/\b[A-ZÀ-Ý][A-ZÀ-Ý0-9'&-]{2,}\b/g) || []).filter((w) => !stop.has(w) && !/^\d/.test(w));
+  if (coll.length && /^(N\/?A|-)?$/i.test(String(row.ATT_SUPPLIER_COLLECTION || "").trim())) {
+    if (!empty("ATT_SUPPLIER_COLLECTION")) out.ATT_SUPPLIER_COLLECTION = { value: coll[0], reason: `Nome em maiúsculas no nome do produto (antes: ${row.ATT_SUPPLIER_COLLECTION})` };
+    else set("ATT_SUPPLIER_COLLECTION", coll[0], "Nome em maiúsculas no nome do produto");
+  }
+  // 7) Peças ← "Conjunto de N" / "N peças"
+  const pcs = text.match(/(?:conj(?:unto)?\.?\s*(?:de\s*)?)(\d+)|(\d+)\s*pe[çc]as/i);
+  if (pcs) set("ATT_PIECES", pcs[1] || pcs[2], `Do texto: "${pcs[0]}"`);
+  // 8) Métricas a partir do texto
+  const metric = (attr, re, unitMap, reasonLbl) => {
+    if (!empty(attr)) return;
+    const m = text.match(re);
+    if (!m) return;
+    const v = Number(m[1].replace(",", "."));
+    const u = unitMap[m[2].toLowerCase()];
+    if (!v || !u) return;
+    set(attr, v.toFixed(4), `${reasonLbl}: "${m[0]}"`);
+    if (out[attr]) out[`${attr}-unit`] = { value: u, reason: "Unidade" };
+  };
+  metric("ATT_CAPACITY", /(\d+(?:[.,]\d+)?)\s?(ml|cl|l|litros?)\b/i, { ml: "MILLILITER", cl: "CENTILITER", l: "LITER", litro: "LITER", litros: "LITER" }, "Capacidade no texto");
+  metric("ATT_VOLTAGE", /(\d+(?:[.,]\d+)?)\s?(v)\b/i, { v: "VOLT" }, "Tensão no texto");
+  metric("ATT_POWER_WATTS", /(\d+(?:[.,]\d+)?)\s?(w)\b/i, { w: "WATT" }, "Potência no texto");
+  // 9) Aroma ← nome do aroma no texto (velas/ambientadores)
+  if (/vela|ambientador|difusor|perfum|aroma/i.test(text) && empty("ATT_SCENTFLAVOUR")) {
+    const low = (x) => x.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const hit = Object.entries(dict?.options?.ATT_SCENTFLAVOUR || {}).find(([c, o]) => c !== "001" && c !== "007" && o.pt_PT.length > 3 && low(text).includes(low(o.pt_PT)));
+    if (hit) set("ATT_SCENTFLAVOUR", hit[0], `Aroma "${hit[1].pt_PT}" no texto`);
+  }
+  // 10) LED ← "LED" no texto
+  if (/\bLED\b/.test(text) && empty("ATT_LED")) set("ATT_LED", "1", "\"LED\" no texto");
+  return out;
+}
+
+// ---------------------------------------------------------------------------- label rules (merchandising)
+import { applyRules, activeRules } from "./rules.mjs";
+export function labelChanges(row, headers, cfg, accepted = {}) {
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Lisbon" }).format(new Date());
+  const rules = activeRules(cfg.labelRules || [], today);
+  if (!rules.length) return {};
+  const merged = { ...row, ...accepted, _today: today };
+  const locked = headers.filter((h) => !isEditable(h, cfg) || !(cfg.labelFields || []).includes(parseColumn(h).attr));
+  const r = applyRules(rules, merged, { locked: locked.filter((h) => !h.startsWith("_")) });
+  const out = {};
+  for (const [k, v] of Object.entries(r.row)) {
+    if (k.startsWith("_") || !(cfg.labelFields || []).includes(parseColumn(k).attr) || !isEditable(k, cfg)) continue;
+    if (String(v ?? "") !== String(row[k] ?? "")) out[k] = String(v ?? "");
   }
   return out;
 }
