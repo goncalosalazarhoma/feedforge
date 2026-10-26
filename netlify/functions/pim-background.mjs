@@ -2,7 +2,7 @@
 import { db } from "../lib/store.mjs";
 import { authorized } from "../lib/http.mjs";
 import { mapLimit } from "../lib/util.mjs";
-import { proposeCategoriesAI, applyCategoryChange, splitCats } from "../lib/categories.mjs";
+import { proposeCategoriesAI, applyCategoryChange, splitCats, ancestors, humanCat } from "../lib/categories.mjs";
 import { categoryContext } from "../lib/pim.mjs";
 import { PK, getPimConfig, columnFor, isEditable, diagnose, productFacts, campaignText, optimizeProducts, cleanAi, refreshMeta, getDictionary, fieldsFor } from "../lib/pim.mjs";
 
@@ -51,10 +51,14 @@ export async function runCategoryJob(id, { deadline = Date.now() + 13.5 * 60 * 1
     const prev = results[sku]?.fields?.categories;
     if (prev && (prev.source === "manual" || prev.status === "accepted")) continue;
     // merge with deterministic proposal if any
-    const add = [...new Set([...(prev?.catDiff?.add || []), ...p.add])], remove = [...new Set([...(prev?.catDiff?.remove || []), ...p.remove])].filter((c) => !add.includes(c));
+    const remove = [...new Set([...(prev?.catDiff?.remove || []), ...p.remove])].filter((c) => !p.add.includes(c));
+    let add = [...new Set([...(prev?.catDiff?.add || []), ...p.add])].filter((c) => !remove.includes(c) || p.add.includes(c));
+    // drop parent-adds that only existed because of a category the AI removed
+    const final = splitCats(applyCategoryChange(row.categories, add, remove)).filter((c) => c.startsWith("ecom_"));
+    add = add.filter((c) => p.add.includes(c) || !(prev?.catDiff?.add || []).includes(c) || final.some((o) => o !== c && ancestors(o, cctx.tax).includes(c)) || !cctx.tax[c] || !Object.values(cctx.tax).some((v) => v.parent === c));
     const value = applyCategoryChange(row.categories, add, remove);
     if (value === row.categories) continue;
-    (results[sku] ||= { fields: {} }).fields.categories = { value, source: "ai", status: "pending", reason: [prev?.reason, p.reason].filter(Boolean).join(" · "), catDiff: { add, remove } };
+    (results[sku] ||= { fields: {} }).fields.categories = { value, source: "ai", status: "pending", reason: [...String(prev?.reason || "").split(" · ").filter((part) => part && !remove.some((c) => part.includes(`"${humanCat(c, cctx.tax)}"`))), p.reason].filter(Boolean).join(" · "), catDiff: { add, remove } };
     changed++;
   }
   await db.set(PK.results(id), results);

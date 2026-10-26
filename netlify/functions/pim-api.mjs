@@ -28,7 +28,7 @@ route("PUT", "/config", async ({ body }) => {
 });
 function summarizeDict(d) {
   if (!d) return null;
-  return { families: Object.keys(d.families || {}).length, attributesWithOptions: Object.keys(d.options || {}).length, attributes: Object.keys(d.attributes || {}).length, importedAt: d.importedAt, source: d.source, bundled: !!d.bundled };
+  return { categories: Object.keys(d.categories || {}).length, families: Object.keys(d.families || {}).length, attributesWithOptions: Object.keys(d.options || {}).length, attributes: Object.keys(d.attributes || {}).length, importedAt: d.importedAt, source: d.source, bundled: !!d.bundled };
 }
 route("GET", "/dictionary", async () => getDictionary());
 route("PUT", "/dictionary", async ({ body }) => {
@@ -37,6 +37,7 @@ route("PUT", "/dictionary", async ({ body }) => {
     families: { ...(cur.families || {}), ...(body.families || {}) },
     options: { ...(cur.options || {}), ...(body.options || {}) },
     attributes: { ...(cur.attributes || {}), ...(body.attributes || {}) },
+    categories: { ...(cur.categories || {}), ...(body.categories || {}) },
     importedAt: new Date().toISOString(),
     source: body.source || cur.source || "manual",
   };
