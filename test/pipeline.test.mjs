@@ -53,6 +53,16 @@ let log = await runFeed("pt", { trigger: "schedule" });
 assert.equal(log.status, "ok");
 assert.equal(log.diff.new, 3);
 let out = await db.get(K.output("pt"));
+// approval on by default: AI copy waits for review and is NOT in the feed yet
+assert.equal(out.meta.rows.find((r) => r.id === "444394").title, "CESTO ROUPA", "pending AI copy not published");
+assert.ok(out.index.find((i) => i.id === "444394").aiPending);
+const aiStore = await db.get(K.ai("pt"));
+for (const e of Object.values(aiStore)) if (e.status === "pending") e.status = "accepted";
+await db.set(K.ai("pt"), aiStore);
+log = await runFeed("pt", { mode: "rebuild", trigger: "manual" });
+out = await db.get(K.output("pt"));
+cfg.ai.requireApproval = false; await db.set(K.config("pt"), cfg); // rest of the test: auto-publish mode
+console.log("Approval OK");
 const m1 = Object.fromEntries(out.meta.rows.map((r) => [r.id, r]));
 assert.equal(m1["441499"].title, base("441499").title, "good product should not go to AI");
 assert.match(m1["444394"].title, /otimizado/, "flagged product optimised");

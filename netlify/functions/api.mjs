@@ -94,11 +94,11 @@ route("GET", "/feeds/:f/summary", async ({ f }) => {
     config: cfg,
     running: !!(lock && Date.now() - lock.at < 20 * 60 * 1000),
     output: out ? { meta: out.meta.rows.length, gmc: out.gmc.rows.length, links: out.links, generatedAt: out.generatedAt, flagCount: out.flagCount,
-      flagged: out.index.filter((i) => i.flags.length).length, ai: out.index.filter((i) => i.ai).length, edited: out.index.filter((i) => i.edited).length,
+      flagged: out.index.filter((i) => i.flags.length).length, ai: out.index.filter((i) => i.ai).length, aiPending: out.index.filter((i) => i.aiPending).length, edited: out.index.filter((i) => i.edited).length,
       isNew: out.index.filter((i) => i.isNew).length, excluded: out.index.filter((i) => i.excluded.meta || i.excluded.gmc).length } : null,
     headers: source?.headers || [],
     sourceFetchedAt: source?.fetchedAt,
-    aiQueue: (state?.aiQueue?.length || 0) + (requests?.length || 0),
+    aiQueue: new Set([...(state?.aiQueue || []), ...(requests || [])]).size, // same product queued + requested counts once
     runs: (runs || []).slice(0, 10),
   };
 });
@@ -117,6 +117,7 @@ route("GET", "/feeds/:f/products", async ({ f, query }) => {
   if (filter === "new") items = items.filter((i) => i.isNew);
   if (filter === "flagged") items = items.filter((i) => i.flags.length);
   if (filter === "ai") items = items.filter((i) => i.ai);
+  if (filter === "ai_pending") items = items.filter((i) => i.aiPending);
   if (filter === "edited") items = items.filter((i) => i.edited);
   if (filter === "excluded") items = items.filter((i) => i.excluded.meta || i.excluded.gmc);
   if (flag) items = items.filter((i) => i.flags.includes(flag));
@@ -188,6 +189,27 @@ route("POST", "/feeds/:f/products/:id/ai-accept", async ({ f, id, body }) => {
   all[String(src[cfg.idField])] = { fields, inputHash: aiInputHash(src, cfg), at: new Date().toISOString(), model: cfg.ai.model, manual: true };
   await db.set(K.ai(f), all);
   return { ok: true };
+});
+
+// accept / reject AI copy waiting for approval (one product or all pending), then rebuild Meta/GMC + Sheets
+route("POST", "/feeds/:f/ai-review", async ({ f, body, req }) => {
+  const status = body.action === "reject" ? "rejected" : "accepted";
+  const all = (await db.get(K.ai(f))) || {};
+  const ids = body.ids?.length ? body.ids.map(String) : Object.keys(all);
+  let n = 0;
+  for (const id of ids) {
+    const e = all[id];
+    if (!e || e.status !== "pending") continue;
+    if (body.fields?.[id]) e.fields = { ...e.fields, ...body.fields[id] };
+    e.status = status; e.reviewedAt = new Date().toISOString(); n++;
+  }
+  await db.set(K.ai(f), all);
+  let started = false;
+  if (n && body.apply !== false) {
+    const lock = await db.get(K.lock(f));
+    if (!(lock && Date.now() - lock.at < 20 * 60 * 1000)) { await triggerRun(new URL(req.url).origin, { feedId: f, mode: "rebuild", trigger: "manual" }); started = true; }
+  }
+  return { changed: n, status, started };
 });
 
 route("DELETE", "/feeds/:f/products/:id/ai", async ({ f, id }) => {

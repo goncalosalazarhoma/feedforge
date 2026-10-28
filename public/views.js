@@ -290,6 +290,7 @@
           <label class="f">Produtos novos que vão à AI
             <select id="ai-mode"><option value="flagged" ${ai.mode !== "all" ? "selected" : ""}>Só os que têm campos sub-otimizados</option><option value="all" ${ai.mode === "all" ? "selected" : ""}>Todos os produtos novos</option></select></label>
           <label class="f">Máximo de produtos por run <input type="number" id="ai-max" value="${ai.maxPerRun}" /></label>
+          <label class="chk"><input type="checkbox" id="ai-approve" ${ai.requireApproval !== false ? "checked" : ""}/> Copy AI só entra no feed depois de aceite (Produtos → "AI por rever")</label>
           <label class="chk"><input type="checkbox" id="ai-reopt" ${ai.reoptimizeOnSourceChange ? "checked" : ""}/> Re-otimizar também produtos existentes cujo conteúdo mudou na origem</label>
           <p class="muted small">Fila atual: <b>${S.summary.aiQueue}</b> produtos. O excedente acima do máximo passa para o run seguinte.</p>
         </div>
@@ -304,7 +305,7 @@
     $("#ai-save").onclick = (e) => guard(async () => {
       const fieldInstructions = { ...ai.fieldInstructions };
       $$("[data-instr]", main).forEach((t) => (fieldInstructions[t.dataset.instr] = t.value));
-      await saveConfig({ ai: { ...ai, enabled: $("#ai-en").checked, model: $("#ai-model").value.trim(), mode: $("#ai-mode").value, maxPerRun: Number($("#ai-max").value) || 300, reoptimizeOnSourceChange: $("#ai-reopt").checked, brandVoice: $("#ai-voice").value, fieldInstructions } });
+      await saveConfig({ ai: { ...ai, enabled: $("#ai-en").checked, model: $("#ai-model").value.trim(), mode: $("#ai-mode").value, maxPerRun: Number($("#ai-max").value) || 300, reoptimizeOnSourceChange: $("#ai-reopt").checked, requireApproval: $("#ai-approve").checked, brandVoice: $("#ai-voice").value, fieldInstructions } });
     }, e.target);
   };
 

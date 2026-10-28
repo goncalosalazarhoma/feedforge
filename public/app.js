@@ -215,6 +215,7 @@
         ${kpi(o?.flagged, "com campos sub-otimizados", "flagged")}
         ${kpi(o?.ai, "otimizados por AI", "ai")}
         ${kpi(s.aiQueue, "na fila de AI")}
+        ${kpi(o?.aiPending, "copy AI por rever", "ai_pending")}
         ${kpi(o?.edited, "editados manualmente", "edited")}
         ${kpi(o?.excluded, "excluídos", "excluded")}
       </div>
@@ -284,11 +285,11 @@
   // ------------------------------------------------------------------ products
   VIEWS.products = async (main) => {
     const P = S.products;
-    const chips = [["all", "Todos"], ["new", "Novos"], ["flagged", "Sub-otimizados"], ["ai", "Com AI"], ["edited", "Editados"], ["excluded", "Excluídos"]];
+    const chips = [["all", "Todos"], ["new", "Novos"], ["flagged", "Sub-otimizados"], ["ai", "Com AI"], ["ai_pending", "AI por rever"], ["edited", "Editados"], ["excluded", "Excluídos"]];
     main.innerHTML = `
       <div class="head">
         <div><h1>Produtos</h1><div class="muted">Clica num produto para editar campos, ver o antes/depois e gerar copy com AI.</div></div>
-        <div class="row"><button class="btn" id="bulk-ai" title="Envia os produtos deste filtro para a fila de AI (processados no próximo run completo)">Enviar filtro para AI</button></div>
+        <div class="row"><button class="btn" id="ai-acc-all" title="Aceita toda a copy AI por rever e atualiza o Meta/GMC + Sheets">Aceitar todas as pendentes</button><button class="btn" id="bulk-ai" title="Envia os produtos deste filtro para a fila de AI (processados no próximo run completo)">Enviar filtro para AI</button></div>
       </div>
       <div class="card">
         <div class="row" style="margin-bottom:12px">
@@ -300,6 +301,12 @@
     let t;
     $("#p-q").oninput = (e) => { clearTimeout(t); t = setTimeout(() => { P.q = e.target.value; P.page = 1; loadList(); }, 250); };
     $$("[data-f]", main).forEach((c) => (c.onclick = () => { P.filter = c.dataset.f; P.flag = ""; P.page = 1; VIEWS.products(main); }));
+    $("#ai-acc-all").onclick = async (e) => {
+      const n = (await api(F(`/products?${qs({ filter: "ai_pending", size: 1 })}`))).total;
+      if (!n) return toast("Não há copy AI por rever");
+      if (!(await ask(`Aceitar a copy AI de ${n} produtos? Entra no Meta/GMC e no Sheets logo a seguir (corre um "Aplicar alterações").`, { ok: "Aceitar todas" }))) return;
+      guard(async () => { const r = await api(F("/ai-review"), { method: "POST", body: { action: "accept" } }); toast(`${r.changed} produtos aceites${r.started ? " — a atualizar o Sheets…" : " — corre “Aplicar alterações” quando o run atual acabar"}`); loadList(); }, e.target);
+    };
     $("#bulk-ai").onclick = (e) => guard(async () => {
       const r = await api(F(`/products?${qs({ ids: 1, size: 1 })}`));
       if (!r.ids?.length) return toast("Nenhum produto neste filtro");
@@ -330,7 +337,7 @@
             <td><div class="trunc">${esc(i.title)}</div>${i.flags.length ? `<div style="margin-top:4px">${i.flags.slice(0, 3).map((f) => `<span class="badge flag">${esc(FLAG_LABEL[f] || f)}</span>`).join("")}${i.flags.length > 3 ? `<span class="badge flag">+${i.flags.length - 3}</span>` : ""}</div>` : ""}</td>
             <td class="mono">${esc(i.price)}</td>
             <td class="small">${esc(i.availability)}</td>
-            <td>${i.isNew ? `<span class="badge new">novo</span>` : ""}${i.ai ? `<span class="badge ai">AI</span>` : ""}${i.edited ? `<span class="badge edit">editado</span>` : ""}${i.excluded.meta ? `<span class="badge ex">fora Meta</span>` : ""}${i.excluded.gmc ? `<span class="badge ex">fora GMC</span>` : ""}</td>
+            <td>${i.isNew ? `<span class="badge new">novo</span>` : ""}${i.ai ? `<span class="badge ai">AI</span>` : ""}${i.aiPending ? `<span class="badge edit">AI por rever</span>` : ""}${i.edited ? `<span class="badge edit">editado</span>` : ""}${i.excluded.meta ? `<span class="badge ex">fora Meta</span>` : ""}${i.excluded.gmc ? `<span class="badge ex">fora GMC</span>` : ""}</td>
           </tr>`).join("")}
       </table>
       <div class="pager"><span class="muted">${r.total} produtos · página ${r.page}/${pages}</span><button class="btn sm" id="pg-prev" ${r.page <= 1 ? "disabled" : ""}>←</button><button class="btn sm" id="pg-next" ${r.page >= pages ? "disabled" : ""}>→</button></div>`;
@@ -360,7 +367,9 @@
       <div class="ai-box" style="margin-bottom:14px">
         <div class="row"><b>AI</b><span class="muted small grow">Campos: ${d.aiFields.join(", ")} · ${S.me.hasAnthropic ? "pronto" : "ANTHROPIC_API_KEY em falta"}</span>
           ${d.ai ? `<button class="btn sm danger" id="ai-del">Remover copy AI</button>` : ""}
+          ${d.ai?.status === "pending" ? `<button class="btn sm" id="ai-rej">Rejeitar</button><button class="btn sm primary" id="ai-acc">Aceitar copy AI</button>` : ""}
           <button class="btn sm primary" id="ai-gen" ${S.me.hasAnthropic ? "" : "disabled"}>Gerar sugestão</button></div>
+        ${d.ai?.status === "pending" ? `<div class="form" style="margin-top:10px"><div class="small muted">Copy AI por rever (ainda não está no feed) — podes editar antes de aceitar:</div>${Object.entries(d.ai.fields || {}).map(([f, v]) => `<label class="f">${esc(f)} <span class="muted small">(${String(v).length} car. · atual: ${String(d.source[f] ?? "").length})</span><textarea data-aip="${esc(f)}" rows="${f === "description" ? 5 : 2}">${esc(v)}</textarea></label>`).join("")}</div>` : d.ai?.status === "rejected" ? `<p class="muted small" style="margin-top:6px">Copy AI rejeitada — este produto usa os textos da origem.</p>` : ""}
         <div id="ai-sugg"></div>
       </div>
       <div class="card" style="padding:0">
@@ -403,6 +412,14 @@
       toast("Edições guardadas — entram no Sheets no próximo run ou em “Aplicar alterações”");
       openProduct(d.id);
     }, e.target);
+    const review = (action) => guard(async () => {
+      const fields = {};
+      $$("[data-aip]", panel).forEach((ta) => (fields[ta.dataset.aip] = ta.value));
+      const r = await api(F("/ai-review"), { method: "POST", body: { action, ids: [d.id], fields: action === "accept" ? { [d.id]: fields } : undefined } });
+      toast(action === "accept" ? `Copy AI aceite${r.started ? " — a atualizar o Sheets" : ""}` : "Copy AI rejeitada"); openProduct(d.id);
+    });
+    if ($("#ai-acc")) $("#ai-acc").onclick = () => review("accept");
+    if ($("#ai-rej")) $("#ai-rej").onclick = () => review("reject");
     if ($("#ai-del")) $("#ai-del").onclick = () => guard(async () => {
       await api(F(`/products/${encodeURIComponent(d.id)}/ai`), { method: "DELETE" });
       toast("Copy AI removida"); openProduct(d.id);

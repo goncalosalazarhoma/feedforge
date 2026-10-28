@@ -12,6 +12,10 @@ const LOCK_TTL = 20 * 60 * 1000;
 // ---------------------------------------------------------------------------
 // Pure transformation of ONE product (used by the run, the UI detail view and previews)
 // ---------------------------------------------------------------------------
+// AI copy goes live only once accepted (entries without status = legacy, already live)
+export const aiLive = (e) => !!e && (!e.status || e.status === "accepted");
+export const needsApproval = (cfg) => cfg.ai?.requireApproval !== false;
+
 export function processOne(src, cfg, { ai = {}, overrides = {}, state = {}, today = todayLisbon(), rules, useAi = true, ruleCache = null } = {}) {
   rules ??= activeRules(cfg.rules, today);
   const id = String(src[cfg.idField] ?? "");
@@ -20,7 +24,7 @@ export function processOne(src, cfg, { ai = {}, overrides = {}, state = {}, toda
   const steps = { source: src };
 
   let row = { ...src };
-  const aiFields = useAi ? ai[id]?.fields : null;
+  const aiFields = useAi && aiLive(ai[id]) ? ai[id].fields : null;
   if (aiFields) {
     for (const [f, v] of Object.entries(aiFields)) if (!lockedSet.has(f) && cfg.ai.fields.includes(f)) row[f] = v;
   }
@@ -99,7 +103,8 @@ export function buildOutputs(cfg, source, { ai = {}, overrides = {}, state = {},
       availability: p.row.availability ?? "",
       isNew: p.isNew,
       firstSeen: p.firstSeen,
-      ai: !!ai[p.id],
+      ai: aiLive(ai[p.id]),
+      aiPending: ai[p.id]?.status === "pending",
       edited: !!overrides[p.id] && Object.keys(overrides[p.id]).length > 0,
       excluded: p.excluded,
       flags: flags.map((f) => `${f.field}:${f.code}`),
@@ -232,7 +237,7 @@ export async function runFeed(feedId, { mode = "full", trigger = "manual", deadl
             for (const it of items) {
               const id = String(it.row[cfg.idField]);
               if (res[id] && Object.keys(res[id]).length) {
-                generated[id] = { fields: res[id], inputHash: aiInputHash(it.row, cfg), at: new Date().toISOString(), model: cfg.ai.model };
+                generated[id] = { fields: res[id], inputHash: aiInputHash(it.row, cfg), at: new Date().toISOString(), model: cfg.ai.model, status: needsApproval(cfg) ? "pending" : "accepted" };
               } else {
                 state.aiFails[id] = (state.aiFails[id] || 0) + 1;
               }
