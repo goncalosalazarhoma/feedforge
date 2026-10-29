@@ -113,6 +113,7 @@
           <button class="btn" id="pim-redo" ${j.running ? "disabled" : ""} title="Volta a gerar com AI todos os produtos, substituindo sugestões AI já aceites (as tuas edições manuais mantêm-se)">Refazer AI</button>
           <button class="btn" id="pim-accept">Aceitar todas as pendentes</button>
           <button class="btn primary" id="pim-export" title="Só sku + colunas alteradas — recomendado para importar no Akeneo">⬇ Exportar alterações</button>
+          ${j.models ? `<button class="btn" id="pim-export-split" title="Dois ficheiros: produtos (sku) e modelos (code), para jobs de import separados no Akeneo">⬇ Produtos + modelos separados</button>` : ""}
           <button class="btn" id="pim-export-full" title="Todas as colunas do ficheiro original (+ colunas ES novas), com as alterações aceites aplicadas">⬇ Ficheiro completo</button>
         </div>
       </div>
@@ -134,13 +135,14 @@
       <div class="card"><h2>Categorias</h2>
         ${(() => { const cf = Object.entries(j.flagCount || {}).filter(([k]) => k.startsWith("_categories:")); return cf.length ? `<div class="chips" style="margin-bottom:10px">${cf.map(([k, n]) => `<span class="chip" data-flag="${esc(k)}">${esc(flagLabel(k))} · <b>${n}</b></span>`).join("")}</div>` : `<p class="muted">Sem problemas de categorização detetados.</p>`; })()}
         <p class="muted small">Correções automáticas (categoria-mãe em falta, Natal, faixa de preço vs PVP) aparecem já como propostas. A AI propõe a categoria final certa e remove as erradas, usando só códigos existentes. Os códigos ERP (numéricos) nunca são alterados. As categorias não são aceites em bloco com o resto.</p>
-        <div class="row"><button class="btn" id="pim-cat-run" ${j.running ? "disabled" : ""}>Propor re-categorização (AI)</button><button class="btn primary" id="pim-cat-review">Rever propostas de categorias</button><button class="btn" id="pim-cat-accept">Aceitar categorias propostas</button><button class="btn" id="pim-cat-export" title="SKU · Nome · Categorias anteriores · Categorias propostas (só propostas aceites)">⬇ Exportar recategorização</button>
+        <div class="row"><button class="btn" id="pim-cat-run" ${j.running ? "disabled" : ""}>Propor re-categorização (AI)</button><button class="btn primary" id="pim-cat-review">Rever propostas de categorias</button><button class="btn" id="pim-cat-accept">Aceitar categorias propostas</button>
         ${j.progress?.mode === "categories" ? `<span class="muted small">Última proposta: ${j.progress.changed ?? 0} com alterações · ${j.progress.kept ?? 0} mantidas com justificação${j.progress.noAnswer ? ` · ${j.progress.noAnswer} sem resposta` : ""} · ${fmtDate(j.progress.finishedAt)}</span>` : ""}</div>
       </div>
+      <div class="card"><h2>Recategorização</h2><div id="pim-cat-table" class="muted">A carregar…</div></div>
       <div class="card">
         <div class="row" style="margin-bottom:10px">
           <input id="pim-q" placeholder="Pesquisar sku ou nome…" value="${esc(P.list.q)}" style="min-width:240px" />
-          <div class="chips">${[["", "Todos"], ["warnings", "⚠ A verificar"], ["errors", "Com erros"], ["todo", "Sem sugestão"], ["pending", "Por rever"], ["accepted", "Aceites"], ["seasonal", "Sazonais"]].map(([k, l]) => `<span class="chip ${P.list.filter === k && !P.list.flag ? "on" : ""}" data-f="${k}">${l}</span>`).join("")}
+          <div class="chips">${[["", "Todos"], ["warnings", "⚠ A verificar"], ["errors", "Com erros"], ["todo", "Sem sugestão"], ["pending", "Por rever"], ["accepted", "Aceites"], ["seasonal", "Sazonais"], ...(P.job?.models ? [["models", "Modelos"]] : [])].map(([k, l]) => `<span class="chip ${P.list.filter === k && !P.list.flag ? "on" : ""}" data-f="${k}">${l}</span>`).join("")}
           ${P.list.flag ? `<span class="chip on" data-f="">${esc(flagLabel(P.list.flag))} ✕</span>` : ""}</div>
         </div>
         <div id="pim-list"></div>
@@ -151,17 +153,8 @@
     $("#pim-redo").onclick = async (e) => { if (await ask("Voltar a gerar com AI todos os produtos? As sugestões AI já aceites são substituídas; as tuas edições manuais mantêm-se.", { ok: "Refazer AI" })) run("all", e.target, true); };
     $("#pim-accept").onclick = (e) => guard(async () => { const r = await papi(`/jobs/${P.jobId}/bulk`, { method: "POST", body: { action: "accept" } }); toast(`${r.changed} sugestões aceites`); drawJob(box); }, e.target);
     $("#pim-export").onclick = (e) => guard(() => exportXlsx(false), e.target);
-    $("#pim-cat-export").onclick = (e) => guard(async () => {
-      const r = await papi(`/jobs/${P.jobId}/categories-export`);
-      if (!r.rows.length) return toast("Ainda não há propostas de categorias aceites para exportar", true);
-      const ws = XLSX.utils.aoa_to_sheet([r.headers, ...r.rows.map((row) => r.headers.map((h) => row[h] ?? ""))]);
-      ws["!cols"] = [{ wch: 12 }, { wch: 50 }, { wch: 80 }, { wch: 80 }];
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Recategorização");
-      XLSX.writeFile(wb, `${P.job.name}-recategorizacao.xlsx`);
-      toast(`${r.rows.length} produtos recategorizados exportados`);
-    }, e.target);
     $("#pim-export-full").onclick = (e) => guard(() => exportXlsx(true), e.target);
+    if ($("#pim-export-split")) $("#pim-export-split").onclick = (e) => guard(() => exportXlsx(false, true), e.target);
     $$("[data-flag]", box).forEach((tr) => (tr.onclick = () => { P.list = { ...P.list, flag: tr.dataset.flag, filter: "", page: 1 }; drawJob(box); }));
     $$("[data-f]", box).forEach((c) => (c.onclick = () => { P.list = { ...P.list, filter: c.dataset.f, flag: "", page: 1 }; drawJob(box); }));
     let t; $("#pim-q").oninput = (e) => { clearTimeout(t); t = setTimeout(() => { P.list.q = e.target.value; P.list.page = 1; drawList(); }, 250); };
@@ -170,6 +163,7 @@
     $("#pim-cat-review").onclick = () => reviewCategories();
     $("#pim-auto").onclick = (e) => guard(async () => { const r = await papi(`/jobs/${P.jobId}/auto`, { method: "POST" }); toast(`${r.fixes} deduções · ${r.labels} labels`); drawJob(box); }, e.target);
     drawImages();
+    drawCatTable();
     drawList();
     clearTimeout(P.poll);
     if (j.running) P.poll = setTimeout(() => { if (S.view === "pim" && P.jobId === j.id) drawJob(box); }, 6000);
@@ -237,6 +231,32 @@
     }, btn);
   }
 
+  async function drawCatTable() {
+    const box = $("#pim-cat-table");
+    if (!box) return;
+    const { items } = await papi(`/jobs/${P.jobId}/categories`);
+    const changes = items.filter((i) => i.add.length || i.remove.length);
+    const filter = P.catTable || "all";
+    const list = changes.filter((i) => filter === "all" || i.status === filter);
+    const chip = (k, l) => `<span class="chip ${filter === k ? "on" : ""}" data-ct="${k}">${l} · ${k === "all" ? changes.length : changes.filter((i) => i.status === k).length}</span>`;
+    const cats = (arr, cls = "") => arr.map((c) => `<span class="badge${cls}">${esc(c.label)}</span>`).join(" ") || `<span class="muted small">sem categoria</span>`;
+    box.classList.remove("muted");
+    box.innerHTML = changes.length ? `
+      <div class="chips" style="margin-bottom:10px">${chip("all", "Todas")}${chip("pending", "Por rever")}${chip("accepted", "Aceites")}${chip("rejected", "Rejeitadas")}</div>
+      ${list.length ? `<table><tr><th>SKU</th><th>Nome</th><th>Categorias anteriores</th><th>Categorias propostas</th></tr>
+      ${list.map((i) => {
+        const proposed = [...i.current.filter((c) => !i.remove.some((r) => r.code === c.code)), ...i.add.filter((a) => !i.current.some((c) => c.code === a.code))];
+        return `<tr class="click" data-sku="${esc(i.sku)}"><td class="mono">${esc(i.sku)}</td><td><div class="trunc">${esc(i.name)}</div></td>
+          <td class="small">${cats(i.current)}</td>
+          <td class="small">${proposed.map((c) => `<span class="badge${i.add.some((a) => a.code === c.code) ? " new" : ""}">${esc(c.label)}</span>`).join(" ") || `<span class="muted small">sem categoria</span>`}
+            ${i.status === "accepted" ? `<span class="badge new">aceite</span>` : i.status === "rejected" ? `<span class="badge ex">rejeitada</span>` : `<span class="badge edit">por rever</span>`}</td></tr>`;
+      }).join("")}</table>` : `<div class="empty">Nada nesta vista.</div>`}
+      <p class="muted small">Verde = categoria nova. Clica num produto para ver o motivo e aceitar/rejeitar. As categorias aceites saem no mesmo export das restantes alterações.</p>`
+      : `<p class="muted">Sem propostas de alteração de categorias.</p>`;
+    $$("[data-ct]", box).forEach((c) => (c.onclick = () => { P.catTable = c.dataset.ct; drawCatTable(); }));
+    $$("tr[data-sku]", box).forEach((tr) => (tr.onclick = () => openSku(tr.dataset.sku)));
+  }
+
   async function drawList() {
     const box = $("#pim-list");
     const q = new URLSearchParams({ q: P.list.q, filter: P.list.filter, flag: P.list.flag, page: P.list.page, size: 50 });
@@ -250,7 +270,7 @@
       const sum = (f) => items.reduce((n, i) => n + f(i), 0);
       const comp = items.filter((i) => i.completeness).map((i) => i.completeness);
       k.innerHTML = `<div class="grid k">
-        <div><div class="kpi"><div class="v">${all.total}</div><div class="l">produtos</div></div></div>
+        <div><div class="kpi"><div class="v">${P.job.count ?? all.total}</div><div class="l">produtos${P.job.models ? ` · ${P.job.models} modelos` : ""}</div></div></div>
         ${P.job.completeness?.pt?.[0] != null ? `
         <div><div class="kpi"><div class="v">${P.job.completeness.pt[0]}% → <span style="color:var(--ok)">${P.job.completeness.pt[1]}%</span></div><div class="l">completude média PT (atual → com alterações aceites)</div></div></div>
         <div><div class="kpi"><div class="v">${P.job.completeness.es[0]}% → <span style="color:var(--ok)">${P.job.completeness.es[1]}%</span></div><div class="l">completude média ES (estimada)</div></div></div>
@@ -264,7 +284,7 @@
     if (!r.total) { box.innerHTML = `<div class="empty">Nenhum produto.</div>`; return; }
     const pages = Math.ceil(r.total / r.size);
     box.innerHTML = `<table><tr><th>SKU</th><th>Nome</th><th>Família</th><th>Completude PT · ES</th><th>Problemas</th><th>Sugestões</th></tr>
-      ${r.items.map((i) => `<tr class="click" data-sku="${esc(i.sku)}"><td class="mono">${esc(i.sku)}</td><td><div class="trunc">${esc(i.name)}</div></td><td class="small muted">${esc(i.family.replace(/^FAM_/, ""))}</td>
+      ${r.items.map((i) => `<tr class="click" data-sku="${esc(i.sku)}"><td class="mono">${esc(i.sku)}${i.entity === "model" ? ` <span class="badge ai">modelo</span>` : ""}${i.parent ? `<div class="small muted">↳ ${esc(i.parent)}</div>` : ""}</td><td><div class="trunc">${esc(i.name)}</div>${i.inherited?.length ? `<div class="small muted">corrigir no modelo ${i.inherited.map(esc).join(", ")}</div>` : ""}</td><td class="small muted">${esc((i.family || "").replace(/^FAM_/, ""))}</td>
         <td class="small">${i.comp ? `${i.comp.pt[0]}${i.comp.pt[1] !== i.comp.pt[0] ? `→<b style="color:var(--ok)">${i.comp.pt[1]}</b>` : ""}% <span class="muted">· ES ${i.comp.es[0]}${i.comp.es[1] !== i.comp.es[0] ? `→<b style="color:var(--ok)">${i.comp.es[1]}</b>` : ""}%</span>` : `${i.completeness ?? "—"}%`}</td>
         <td>${i.flags.filter((f) => !f.includes(":missing_es") && !f.startsWith("_completeness")).slice(0, 3).map((f) => `<span class="badge flag">${esc(flagLabel(f))}</span>`).join("")}${i.seasonal ? `<span class="badge ai">sazonal</span>` : ""}</td>
         <td>${i.warnings ? `<span class="badge ex">⚠ ${i.warnings}</span>` : ""}${i.suggested ? `${i.pending ? `<span class="badge edit">${i.pending} por rever</span>` : ""}${i.accepted ? `<span class="badge new">${i.accepted} aceites</span>` : ""}` : `<span class="muted small">—</span>`}</td></tr>`).join("")}</table>
@@ -282,7 +302,9 @@
     if (!d) return;
     const facts = Object.entries(d.facts).filter(([k]) => !["nome_atual", "nome_plp_atual", "descricao_atual", "sku"].includes(k));
     panel.innerHTML = `
-      <div class="head"><div><div class="muted mono">${esc(d.sku)} · ${esc(d.family)}</div><h1>${esc(d.facts.nome_atual || "")}</h1></div>
+      <div class="head"><div><div class="muted mono">${d.hier?.entity === "model" ? `<span class="badge ai">modelo${d.hier.virtual ? " (fora do ficheiro)" : ""}</span> ` : ""}${esc(d.sku)} · ${esc(d.family || "")}</div><h1>${esc(d.hier?.entity === "model" ? (d.facts.nome_plp_atual || d.facts.nome_atual || "") : d.facts.nome_atual || "")}</h1>
+        ${d.hier?.chain?.length ? `<div class="small muted">Hierarquia: ${d.hier.chain.map((c) => `<a href="#" data-open="${esc(c.key)}" class="mono">${esc(c.key)}</a>`).join(" › ")} › <b class="mono">${esc(d.sku)}</b></div>` : ""}
+        ${d.hier?.children?.length ? `<div class="small muted">${d.hier.entity === "model" ? "Variantes" : "Filhos"}: ${d.hier.children.map((c) => `<a href="#" data-open="${esc(c.key)}" class="mono">${esc(c.key)}</a>${c.name ? ` <span>${esc(c.name)}</span>` : ""}`).join(" · ")}</div>` : ""}</div>
         <div class="row"><button class="btn" id="ps-close">Fechar</button><button class="btn" id="ps-accept-all">Aceitar tudo</button><button class="btn primary" id="ps-save">Guardar</button></div></div>
       ${d.flags.length ? `<div class="callout" style="margin-bottom:12px">${d.flags.map((f) => esc(f.msg)).join(" · ")}</div>` : ""}
       ${d.images ? `<div class="card" style="margin-bottom:12px"><h2>Imagens · ${d.images.score ?? d.images.quantityScore}/100</h2>
@@ -297,7 +319,7 @@
       ${d.fields.map((f) => {
         const s = f.suggestion;
         return `<div class="card" data-col="${esc(f.col)}">
-          <div class="row"><b class="mono">${esc(f.col)}</b>${f.editable ? "" : `<span class="badge lock">🔒 trancado</span>`}<span class="grow"></span>
+          <div class="row"><b class="mono">${esc(f.col)}</b>${f.editable ? "" : f.lock ? `<span class="badge lock" title="${esc(f.lock.msg)}">🔒 ${esc(f.lock.msg)}</span>${f.lock.owner && f.lock.reason === "inherited" ? ` <a href="#" class="small" data-open="${esc(f.lock.owner)}">abrir modelo →</a>` : ""}` : `<span class="badge lock">🔒 trancado</span>`}<span class="grow"></span>
             ${s?.warning ? `<span class="badge ex" title="${esc(s.warning)}">⚠ ${esc(s.warning)}</span>` : ""}
             ${s?.reason ? `<span class="badge" title="Origem do valor">ℹ ${esc(s.reason)}</span>` : ""}
             ${s ? `<span class="badge ${s.status === "accepted" ? "new" : s.status === "rejected" ? "ex" : "edit"}">${s.status === "accepted" ? "aceite" : s.status === "rejected" ? "rejeitada" : "por rever"}</span><span class="badge ${s.source === "ai" ? "ai" : ""}">${esc(s.source)}</span>` : ""}</div>
@@ -307,11 +329,12 @@
               ${f.editable ? `<textarea rows="${f.attr === "ATT_LONG_DESCRIPTION" ? 7 : 2}" data-val>${esc(s?.value ?? "")}</textarea>
               <div class="row" style="margin-top:6px"><label class="chk small"><input type="radio" name="st-${esc(f.col)}" value="accepted" ${s?.status === "accepted" ? "checked" : ""}/> aceitar</label>
               <label class="chk small"><input type="radio" name="st-${esc(f.col)}" value="rejected" ${s?.status === "rejected" ? "checked" : ""}/> rejeitar</label>
-              <label class="chk small"><input type="radio" name="st-${esc(f.col)}" value="pending" ${!s || s.status === "pending" ? "checked" : ""}/> por rever</label></div>` : `<span class="muted small">Não exportado</span>`}
+              <label class="chk small"><input type="radio" name="st-${esc(f.col)}" value="pending" ${!s || s.status === "pending" ? "checked" : ""}/> por rever</label></div>` : f.ownerSuggestion ? `<div class="small" style="white-space:pre-wrap">${esc(f.ownerSuggestion.value)}</div><div class="small muted">proposta no modelo ${esc(f.lock.owner)} · ${f.ownerSuggestion.status === "accepted" ? "aceite" : f.ownerSuggestion.status === "rejected" ? "rejeitada" : "por rever"}</div>` : `<span class="muted small">Não exportado</span>`}
             </div>
           </div></div>`;
       }).join("")}`;
     $("#ps-close").onclick = () => $("#drawer").classList.add("hidden");
+    $$("[data-open]", panel).forEach((a) => (a.onclick = (e) => { e.preventDefault(); openSku(a.dataset.open); }));
     $("#ps-accept-all").onclick = () => { $$("input[type=radio][value=accepted]", panel).forEach((r) => { if (r.closest("[data-col]").querySelector("[data-val]").value.trim()) r.checked = true; }); };
     $("#ps-save").onclick = (e) => guard(async () => {
       const fields = {};
@@ -328,14 +351,22 @@
       await papi(`/jobs/${P.jobId}/products/${encodeURIComponent(sku)}`, { method: "PUT", body: { fields } });
       toast("Guardado");
       $("#drawer").classList.add("hidden");
-      drawList();
+      drawList(); drawCatTable();
     }, e.target);
   }
 
-  async function exportXlsx(full) {
-    const r = await papi(`/jobs/${P.jobId}/export${full ? "?full=1" : ""}`);
+  async function exportXlsx(full, split = false) {
+    const r = await papi(`/jobs/${P.jobId}/export${full ? "?full=1" : split ? "?split=1" : ""}`);
     if (!r.changes && !full) return toast("Ainda não há alterações aceites para exportar", true);
     const XLSX = await loadXlsx();
+    if (r.split) {
+      for (const f of r.files) {
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([f.headers, ...f.rows.map((row) => f.headers.map((h) => row[h] ?? ""))]), "Sheet1");
+        XLSX.writeFile(wb, `${P.job.name}-alteracoes-${f.name}.xlsx`);
+      }
+      return toast(r.files.map((f) => `${f.name}: ${f.rows.length}`).join(" · ") + ` · ${r.changes} campos`);
+    }
     const ws = XLSX.utils.aoa_to_sheet([r.headers, ...r.rows.map((row) => r.headers.map((h) => row[h] ?? ""))]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Sheet1");

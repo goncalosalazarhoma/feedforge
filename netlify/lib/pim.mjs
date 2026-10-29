@@ -1,5 +1,7 @@
 // PIM optimizer — works on Akeneo XLSX/CSV exports (columns like ATT_NAME-pt_PT-ecommerce).
 import { db } from "./store.mjs";
+import { buildHierarchy, isModelRow } from "./variants.mjs";
+export { buildHierarchy, isModelRow, normaliseRows } from "./variants.mjs";
 import BUNDLED from "./akeneo-dictionary.mjs";
 import { learnTaxonomy, checkCategories, applyCategoryChange } from "./categories.mjs";
 
@@ -89,6 +91,24 @@ export function isEditable(col, cfg) {
   // deterministic fix: localizable select copied to the other locales (same option code)
   if (p.attr === "ATT_SEASONALITY" && p.locale && p.locale !== cfg.sourceLocale) return true;
   return false;
+}
+
+// Row-aware: editable column AND (with product models) owned by this row and not a variant axis
+export function canEdit(row, col, cfg, h) {
+  if (!isEditable(col, cfg)) return false;
+  if (!h?.hasModels || col === "categories") return col !== "categories" || !isModelRow(row);
+  return h.owns(row, parseColumn(col).attr);
+}
+
+// results that count for a product: its own + accepted/pending changes on the models it inherits from
+export function effectiveFields(row, results, h) {
+  const own = results[row.sku]?.fields || {};
+  if (!h?.hasModels || !row.parent) return own;
+  const out = { ...own };
+  for (const anc of h.chainOf(row).slice(0, -1)) {
+    for (const [col, v] of Object.entries(results[anc.sku]?.fields || {})) if (!(col in out) && h.ownerOf(row, parseColumn(col).attr).key === anc.sku) out[col] = v;
+  }
+  return out;
 }
 
 // AI fields per locale
@@ -331,6 +351,8 @@ Regras:
 - ES: tradução completa, nenhuma palavra em português. Glossário obrigatório: tapete→alfombra; almofada decorativa→cojín; almofada de cama/travesseiro→almohada; candeeiro→lámpara; vaso para plantas→maceta; vaso/jarra decorativa→jarrón; toalha de mesa→mantel; toalha de banho→toalla; roupeiro→armario; coroa→corona; cesto→cesta; caixa→caja; prateado→plateado; dourado→dorado; saboneteira→jabonera; coador→colador; tapete de banho→alfombra de baño.
 - Remove textos genéricos de marketing ("Sabia que…", "Conheça a nossa gama…"). Só inclui texto de campanha no produto que tiver o campo "texto_campanha" (coloca-o antes da linha de especificações, traduzido no ES); nos outros produtos nunca incluas texto de campanha, mesmo que outro produto do lote o tenha.
 - Sem HTML, emojis, preços, promoções ou MAIÚSCULAS integrais. Referências de coleção/marca mantêm-se como no original.
+- Se o produto tiver "campos_a_gerar", devolve APENAS esses campos (os restantes são geridos noutro nível do Akeneo); um campo sem valor a gerar fica de fora do JSON.
+- Se "tipo" for "modelo", o texto vale para todas as "variantes" listadas: inclui só o que é comum a todas (ex.: a cor, se for igual em todas) e nunca o que varia entre elas (ex.: tamanho, medidas, capacidade).
 - Gera para cada língua pedida: ${locales.map((l) => `${l} = ${LANG[l] || l}`).join("; ")}. O ES é uma adaptação natural, não tradução literal.
 
 Campos:
@@ -411,19 +433,30 @@ export function categoryContext(rows, dict) {
 }
 
 export function buildIndex(rows, headers, cfg, dict, results = {}) {
-  const cctx = categoryContext(rows, dict);
+  const prodRows = rows.filter((r) => !isModelRow(r));
+  const cctx = categoryContext(prodRows, dict);
+  const h = buildHierarchy(rows, dict);
   return rows.map((r) => {
-    const flags = diagnose(r, headers, cfg, dict);
-    for (const f of checkCategories(r, cctx, cfg).flags) flags.push({ field: "_categories", code: f.code, msg: f.msg, severity: f.severity });
-    const res = results[r.sku]?.fields || {};
-    const vals = Object.values(res);
+    const model = isModelRow(r);
+    // models: only the problems on fields they own; products: everything (completeness is per product in Akeneo)
+    let flags = diagnose(model ? h.mergedRow(r) : r, headers, cfg, dict);
+    if (model) flags = flags.filter((f) => !f.field.startsWith("_") && h.owns(r, f.field));
+    else for (const f of checkCategories(r, cctx, cfg).flags) flags.push({ field: "_categories", code: f.code, msg: f.msg, severity: f.severity });
+    const own = results[r.sku]?.fields || {};
+    const res = model ? own : effectiveFields(r, results, h);
+    const vals = Object.values(own);
     const content = vals.filter((v) => v.source !== "fix");
     return {
       sku: r.sku,
-      name: r[`ATT_NAME-${cfg.sourceLocale}-${cfg.channel}`] || r[`ATT_LABEL-${cfg.sourceLocale}`] || "",
+      name: r[`ATT_NAME-${cfg.sourceLocale}-${cfg.channel}`] || r[`ATT_PLP_NAME-${cfg.sourceLocale}`] || r[`ATT_LABEL-${cfg.sourceLocale}`] || (model ? h.mergedRow(r)[`ATT_PLP_NAME-${cfg.sourceLocale}`] || h.mergedRow(r)[`ATT_NAME-${cfg.sourceLocale}-${cfg.channel}`] || "" : ""),
+      entity: model ? "model" : "product",
+      parent: r.parent || "",
+      virtual: !!r._virtual,
+      // flags on fields owned by a model this product inherits from (fixed once, on the model)
+      inherited: model || !r.parent ? [] : [...new Set(flags.filter((f) => !f.field.startsWith("_")).map((f) => h.ownerOf(r, f.field).key).filter((k) => k && k !== r.sku))],
       family: r.family || "",
-      completeness: Number(r[`completeness_ratio-${cfg.sourceLocale}-${cfg.channel}`]) || null,
-      comp: estimateCompleteness(r, headers, cfg, dict, res),
+      completeness: model ? null : Number(r[`completeness_ratio-${cfg.sourceLocale}-${cfg.channel}`]) || null,
+      comp: model ? null : estimateCompleteness(r, headers, cfg, dict, res),
       seasonal: isSeasonal(r, cfg),
       flags: flags.map((f) => `${f.field}:${f.code}`),
       errors: flags.filter((f) => f.severity === "error").length,
@@ -446,7 +479,8 @@ export async function refreshMeta(id, meta) {
   meta.autoCount = autoCount;
   const avg = (k, i) => { const v = meta.index.map((x) => x.comp?.[k]?.[i]).filter((x) => x != null); return v.length ? Math.round((v.reduce((a, b) => a + b, 0) / v.length) * 10) / 10 : null; };
   meta.completeness = { pt: [avg("pt", 0), avg("pt", 1)], es: [avg("es", 0), avg("es", 1)], complete: { pt: [meta.index.filter((x) => x.comp?.pt[0] === 100).length, meta.index.filter((x) => x.comp?.pt[1] === 100).length], es: [meta.index.filter((x) => x.comp?.es[0] === 100).length, meta.index.filter((x) => x.comp?.es[1] === 100).length] } };
-  meta.count = data.rows.length;
+  meta.count = data.rows.filter((r) => !isModelRow(r)).length;
+  meta.models = data.rows.filter((r) => isModelRow(r)).length;
   meta.updatedAt = new Date().toISOString();
   await db.set(PK.job(id), meta);
   return meta;

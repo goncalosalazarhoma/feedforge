@@ -4,6 +4,7 @@ import { authorized } from "../lib/http.mjs";
 import { mapLimit } from "../lib/util.mjs";
 import { proposeCategoriesAI, applyCategoryChange, splitCats, ancestors, humanCat, checkCategories } from "../lib/categories.mjs";
 import { categoryContext } from "../lib/pim.mjs";
+import { buildHierarchy, isModelRow, canEdit, humanCode } from "../lib/pim.mjs";
 import { PK, getPimConfig, columnFor, isEditable, diagnose, productFacts, campaignText, optimizeProducts, cleanAi, refreshMeta, getDictionary, fieldsFor } from "../lib/pim.mjs";
 
 const nums = (s) => (String(s || "").match(/\d+(?:[.,]\d+)?/g) || []).map((x) => Number(x.replace(",", "."))).sort((a, b) => a - b).join("|");
@@ -31,8 +32,9 @@ function guard(attr, loc, value, row, cfg, dict) {
 
 export async function runCategoryJob(id, { deadline = Date.now() + 13.5 * 60 * 1000 } = {}) {
   const [cfg, dict, data, meta] = await Promise.all([getPimConfig(), getDictionary(), db.get(PK.rows(id)), db.get(PK.job(id))]);
-  const cctx = categoryContext(data.rows, dict);
-  const bySku = new Map(data.rows.map((r) => [r.sku, r]));
+  const prodRows = data.rows.filter((r) => !isModelRow(r));
+  const cctx = categoryContext(prodRows, dict);
+  const bySku = new Map(prodRows.map((r) => [r.sku, r]));
   const queue = (meta.queue || []).filter((s) => bySku.has(s));
   const batches = [];
   for (let i = 0; i < queue.length; i += 10) batches.push(queue.slice(i, i + 10));
@@ -85,6 +87,7 @@ export async function runPimJob(id, { deadline = Date.now() + 13.5 * 60 * 1000 }
   try {
     const [cfg, dict, data, meta] = await Promise.all([getPimConfig(), getDictionary(), db.get(PK.rows(id)), db.get(PK.job(id))]);
     const bySku = new Map(data.rows.map((r) => [r.sku, r]));
+    const h = buildHierarchy(data.rows, dict || {});
     const queue = (meta.queue || []).filter((s) => bySku.has(s));
     const batches = [];
     for (let i = 0; i < queue.length; i += 3) batches.push(queue.slice(i, i + 3));
@@ -119,8 +122,13 @@ export async function runPimJob(id, { deadline = Date.now() + 13.5 * 60 * 1000 }
       if (fatal || Date.now() > deadline) return;
       const items = skus.map((sku) => {
         const row = bySku.get(sku);
-        const flags = diagnose(row, data.headers, cfg, dict || {}).filter((f) => !f.field.startsWith("_")).map((f) => f.msg);
-        const facts = productFacts(row, dict || {}, cfg);
+        const src = h.hasModels ? h.mergedRow(row) : row;
+        // with product models: only the fields this row owns are generated (the rest lives on another level)
+        const owned = h.hasModels ? [...new Set(cfg.targetLocales.flatMap((loc) => fieldsFor(loc, cfg)))].filter((a) => !row.parent && !isModelRow(row) ? true : h.owns(row, a)) : null;
+        const flags = diagnose(src, data.headers, cfg, dict || {}).filter((f) => !f.field.startsWith("_") && (!owned || owned.includes(f.field))).map((f) => f.msg);
+        const facts = productFacts(src, dict || {}, cfg);
+        if (owned && (row.parent || isModelRow(row))) facts.campos_a_gerar = owned;
+        if (isModelRow(row)) { facts.tipo = "modelo"; facts.variantes = h.variantsOf(row, (a, v) => humanCode(v, a, dict || {}, cfg.sourceLocale)); }
         return { facts, flags, campaign: facts.sazonal ? campaignText(facts.descricao_atual) : "" };
       });
       try {
@@ -133,12 +141,12 @@ export async function runPimJob(id, { deadline = Date.now() + 13.5 * 60 * 1000 }
             for (const attr of fieldsFor(loc, cfg)) {
               const v = per?.[loc]?.[attr];
               const col = columnFor(data.headers, attr, loc, cfg.channel);
-              if (v && isEditable(col, cfg)) {
+              if (v && canEdit(bySku.get(sku), col, cfg, h)) {
                 let clean = cleanAi(attr, v, cfg);
                 // campaign text only where the original had it (the model sometimes copies it from another product in the batch)
                 const item = items[skus.indexOf(sku)];
                 if (attr === "ATT_LONG_DESCRIPTION" && !item?.campaign) clean = clean.replace(/\s*\|?\s*¡?h[oô]!\s*¡?h[oô]!\s*¡?h[oô]ma![\s\S]*?(?=\s\|\s|$)/i, "").replace(/\s{2,}/g, " ").trim();
-                const warning = guard(attr, loc, clean, bySku.get(sku), cfg, dict);
+                const warning = guard(attr, loc, clean, h.hasModels ? h.mergedRow(bySku.get(sku)) : bySku.get(sku), cfg, dict);
                 out[col] = warning ? { value: clean, warning } : clean;
               }
             }

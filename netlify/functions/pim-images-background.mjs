@@ -24,7 +24,8 @@ export async function evaluateImages(id, { deadline = Date.now() + 13 * 60 * 100
   const prev = (await db.get(PK.images(id))) || { items: {} };
   const items = { ...prev.items };
   let probed = 0, matched = 0;
-  await mapLimit(data.rows, 6, async (r) => {
+  const prodRows = data.rows.filter((r) => !(r._model || r.entity_type === "product_model"));
+  await mapLimit(prodRows, 6, async (r) => {
     if (Date.now() > deadline) return;
     const product = assetCount(r.ATT_PRODUCT_IMAGE, r.sku);
     const ambiance = assetCount(r.ATT_AMBIANCE_IMAGES, r.sku);
@@ -41,7 +42,7 @@ export async function evaluateImages(id, { deadline = Date.now() + 13 * 60 * 100
   });
   const scored = Object.values(items);
   const summary = {
-    products: data.rows.length,
+    products: prodRows.length,
     matchedInFeed: matched,
     probed,
     noImage: scored.filter((i) => i.product.effective === 0).length,

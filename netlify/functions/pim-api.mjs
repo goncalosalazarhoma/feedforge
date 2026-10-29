@@ -3,6 +3,7 @@ import { db, httpError } from "../lib/store.mjs";
 import { json, authorized } from "../lib/http.mjs";
 import { PK, getPimConfig, defaultPimConfig, parseColumn, columnFor, isEditable, diagnose, productFacts, dimensionsText, refreshMeta, getDictionary, fieldsFor, deterministicFixes, labelChanges, categoryFixes, categoryContext } from "../lib/pim.mjs";
 import { humanCat, splitCats, checkCategories } from "../lib/categories.mjs";
+import { buildHierarchy, isModelRow, normaliseRows, canEdit, effectiveFields } from "../lib/pim.mjs";
 
 const routes = [];
 const route = (method, pattern, handler) => {
@@ -53,7 +54,7 @@ route("GET", "/jobs", async () => {
 });
 
 route("POST", "/jobs", async ({ body }) => {
-  if (!Array.isArray(body.headers) || !body.headers.includes("sku")) throw httpError(400, "O ficheiro tem de ter a coluna 'sku' (export do Akeneo)");
+  if (!Array.isArray(body.headers) || !(body.headers.includes("sku") || body.headers.includes("code"))) throw httpError(400, "O ficheiro tem de ter a coluna 'sku' (produtos) ou 'code' (modelos) — export do Akeneo");
   const id = uid();
   await db.set(PK.rows(id), { headers: body.headers, rows: [] });
   await db.set(PK.results(id), {});
@@ -69,7 +70,7 @@ route("POST", "/jobs/:id/rows", async ({ id, body }) => {
   for (const r of body.rows || []) {
     const o = {};
     for (const [k, v] of Object.entries(r)) if (v !== null && v !== undefined && v !== "") o[k] = String(v);
-    if (o.sku) data.rows.push(o);
+    if (o.sku || o.code) data.rows.push(o);
   }
   await db.set(PK.rows(id), data);
   return { count: data.rows.length };
@@ -80,15 +81,22 @@ async function applyAuto(id) {
   const [cfg, dict, data] = await Promise.all([getPimConfig(), getDictionary(), db.get(PK.rows(id))]);
   const results = (await db.get(PK.results(id))) || {};
   let fixes = 0, labels = 0;
-  const cctx = categoryContext(data.rows, dict);
+  const cctx = categoryContext(data.rows.filter((r) => !isModelRow(r)), dict);
+  const h = buildHierarchy(data.rows, dict);
   for (const r of data.rows) {
     const cur = (results[r.sku] ||= { fields: {} });
-    // category fixes (never over an AI/manual proposal)
-    const cf = categoryFixes(r, cfg, cctx);
+    const model = isModelRow(r);
+    const src = model ? h.mergedRow(r) : r;
+    // with product models, drop what an earlier version proposed on a field this row does not own
+    for (const [col, v] of Object.entries(cur.fields)) if ((v.source === "fix" || v.source === "label") && !canEdit(r, col, cfg, h)) delete cur.fields[col];
+    // category fixes (never over an AI/manual proposal) — products only
+    const cf = model ? null : categoryFixes(r, cfg, cctx);
     const pc = cur.fields.categories;
     if (cf && (!pc || pc.source === "fix")) { cur.fields.categories = { value: cf.value, source: "fix", status: pc?.value === cf.value ? pc.status : "pending", reason: cf.reason, catDiff: cf.catDiff }; fixes++; }
     // fixes
-    for (const [col, f] of Object.entries(deterministicFixes(r, data.headers, cfg, dict))) {
+    for (const [col, f] of Object.entries(deterministicFixes(src, data.headers, cfg, dict))) {
+      if (!canEdit(r, col, cfg, h)) continue; // owned by another level (or a variant axis)
+      if (model && String(r[col] ?? "") !== "" ) continue;
       const prev = cur.fields[col];
       if (prev && prev.source !== "fix") continue;
       cur.fields[col] = { value: f.value, source: "fix", status: prev?.value === f.value ? prev.status : "pending", reason: f.reason };
@@ -97,7 +105,8 @@ async function applyAuto(id) {
     // labels: recompute from scratch (removing a rule removes its labels)
     for (const [col, v] of Object.entries(cur.fields)) if (v.source === "label") delete cur.fields[col];
     const accepted = Object.fromEntries(Object.entries(cur.fields).filter(([, v]) => v.status === "accepted").map(([c, v]) => [c, v.value]));
-    for (const [col, value] of Object.entries(labelChanges(r, data.headers, cfg, accepted))) {
+    for (const [col, value] of Object.entries(labelChanges(src, data.headers, cfg, accepted))) {
+      if (!canEdit(r, col, cfg, h)) continue;
       if (cur.fields[col] && cur.fields[col].source === "manual") continue;
       cur.fields[col] = { value, source: "label", status: "accepted", reason: "Regra de label" };
       labels++;
@@ -110,6 +119,8 @@ async function applyAuto(id) {
 
 route("POST", "/jobs/:id/finalize", async ({ id }) => {
   const meta = await job(id);
+  const data = await db.get(PK.rows(id));
+  if (data && !data.normalised) { data.rows = normaliseRows(data.rows); data.normalised = true; await db.set(PK.rows(id), data); }
   const r = await applyAuto(id);
   meta.fixes = r.fixes;
   meta.status = "ready";
@@ -151,6 +162,10 @@ route("GET", "/jobs/:id/products", async ({ id, query }) => {
   if (f === "accepted") items = items.filter((i) => i.accepted);
   if (f === "todo") items = items.filter((i) => !i.suggested);
   if (f === "seasonal") items = items.filter((i) => i.seasonal);
+  if (f === "models") items = items.filter((i) => i.entity === "model");
+  if (f === "products") items = items.filter((i) => i.entity !== "model");
+  const parent = query.get("parent");
+  if (parent) items = items.filter((i) => i.parent === parent);
   const flag = query.get("flag");
   if (flag) items = items.filter((i) => i.flags.includes(flag));
   const fam = query.get("family");
@@ -164,9 +179,27 @@ route("GET", "/jobs/:id/products/:sku", async ({ id, sku }) => {
   const [cfg, dict, data, results] = await Promise.all([getPimConfig(), getDictionary(), db.get(PK.rows(id)), db.get(PK.results(id))]);
   const row = data?.rows.find((r) => r.sku === sku);
   if (!row) throw httpError(404, "SKU não encontrado");
+  const h = buildHierarchy(data.rows, dict || {});
+  const model = isModelRow(row);
+  const view = model ? h.mergedRow(row) : row;
   const fields = [];
   const seen = new Set();
-  const push = (col, attr, loc) => { if (seen.has(col)) return; seen.add(col); fields.push({ col, attr, locale: loc, current: row[col] ?? "", suggestion: results?.[sku]?.fields?.[col] || null, editable: isEditable(col, cfg) }); };
+  const push = (col, attr, loc) => {
+    if (seen.has(col)) return; seen.add(col);
+    const f = { col, attr, locale: loc, current: (model ? row[col] : view[col]) ?? "", suggestion: results?.[sku]?.fields?.[col] || null, editable: canEdit(row, col, cfg, h) };
+    if (h.hasModels && isEditable(col, cfg) && !f.editable && col !== "categories") {
+      if (h.isAxis(row, attr)) f.lock = { reason: "axis", msg: "Eixo de variante — não pode ser alterado" };
+      else {
+        const o = h.ownerOf(row, attr);
+        if (o.key && o.key !== sku) {
+          const ownerRow = h.byKey.get(o.key);
+          f.lock = { reason: h.isModel(ownerRow) ? "inherited" : "below", owner: o.key, msg: h.isModel(ownerRow) ? `Herdado do modelo ${o.key} — edita lá` : `Definido em cada variante (ex.: ${o.key})` };
+          if (h.isModel(ownerRow)) f.ownerSuggestion = results?.[o.key]?.fields?.[col] || null;
+        } else f.lock = { reason: "unknown", msg: o.outside ? "Pertence ao modelo raiz, que não está no ficheiro" : "Nível do Akeneo desconhecido — exporta com as colunas family e family_variant" };
+      }
+    }
+    fields.push(f);
+  };
   const attrs = [...new Set([...cfg.editable, ...(cfg.translateOnly || [])])];
   for (const attr of attrs) for (const loc of cfg.targetLocales) {
     if (!cfg.editable.includes(attr) && loc === cfg.sourceLocale) { push(columnFor(data.headers, attr, loc, cfg.channel), attr, loc); continue; } // show PT (locked) next to ES
@@ -178,16 +211,28 @@ route("GET", "/jobs/:id/products/:sku", async ({ id, sku }) => {
   const catLabel = (c) => ({ code: c, label: humanCat(c, cctx.tax), ecom: c.startsWith("ecom_") });
   const catSug = results?.[sku]?.fields?.categories;
   const categories = { flags: checkCategories(row, cctx, cfg).flags, current: splitCats(row.categories).map(catLabel), suggestion: catSug ? { ...catSug, add: (catSug.catDiff?.add || []).map(catLabel), remove: (catSug.catDiff?.remove || []).map(catLabel) } : null };
-  return { sku, family: row.family, facts: productFacts(row, dict || {}, cfg), dimensions: dimensionsText(row), flags: diagnose(row, data.headers, cfg, dict || {}), fields, images, categories, raw: row };
+  const hier = h.hasModels ? {
+    entity: model ? "model" : "product",
+    virtual: !!row._virtual,
+    chain: h.chainOf(model ? row : row).slice(0, -1).map((x) => ({ key: x.sku, virtual: !!x._virtual })),
+    children: (h.children.get(sku) || []).map((c) => ({ key: c.sku, entity: isModelRow(c) ? "model" : "product", name: c[`ATT_PLP_NAME-${cfg.sourceLocale}`] || c[`ATT_NAME-${cfg.sourceLocale}-${cfg.channel}`] || "" })),
+    variants: model ? h.variantsOf(row) : null,
+  } : null;
+  return { sku, family: view.family, hier, facts: productFacts(view, dict || {}, cfg), dimensions: dimensionsText(view), flags: diagnose(view, data.headers, cfg, dict || {}).filter((f) => !model || (!f.field.startsWith("_") && h.owns(row, f.field))), fields, images, categories: model ? null : categories, raw: row };
 });
 
 route("PUT", "/jobs/:id/products/:sku", async ({ id, sku, body }) => {
   sku = decodeURIComponent(sku);
-  const cfg = await getPimConfig();
+  const [cfg, dict, data] = await Promise.all([getPimConfig(), getDictionary(), db.get(PK.rows(id))]);
   const results = (await db.get(PK.results(id))) || {};
   const cur = results[sku] || { fields: {} };
+  const h = buildHierarchy(data.rows, dict);
+  const row = h.byKey.get(sku);
   for (const [col, v] of Object.entries(body.fields || {})) {
-    if (!isEditable(col, cfg)) throw httpError(400, `A coluna ${col} está trancada`);
+    if (v !== null && !canEdit(row, col, cfg, h)) {
+      const o = h.ownerOf(row, parseColumn(col).attr);
+      throw httpError(400, h.isAxis(row, parseColumn(col).attr) ? `${col} é um eixo de variante — não pode ser alterado` : o.key && o.key !== sku ? `${col} só se edita no modelo ${o.key}` : `A coluna ${col} está trancada`);
+    }
     if (v === null) { delete cur.fields[col]; continue; }
     const prev = cur.fields[col] || {};
     cur.fields[col] = { value: v.value ?? prev.value ?? "", source: v.value != null && v.value !== prev.value ? (prev.source === "ai" ? "ai+edit" : "manual") : prev.source || "manual", status: v.status || prev.status || "pending" };
@@ -225,13 +270,27 @@ route("POST", "/jobs/:id/run", async ({ id, body, req }) => {
   const lock = await db.get(PK.lock(id));
   if (lock && Date.now() - lock.at < 16 * 60 * 1000) throw httpError(409, "Já está a correr");
   let skus = body.skus;
+  const idx = meta.index || [];
   if (!skus?.length) {
-    const idx = meta.index || [];
-    skus = (body.scope === "all" ? idx : idx.filter((i) => i.flags.some((f) => !f.startsWith("_")))).filter((i) => body.redo || !i.suggested).map((i) => i.sku);
+    const byIdx = new Map(idx.map((i) => [i.sku, i]));
+    const picked = body.scope === "all" ? idx : idx.filter((i) => i.flags.some((f) => !f.startsWith("_")));
+    const targets = new Set();
+    if (idx.some((i) => i.entity === "model" || i.parent)) {
+      // product models: a problem on an inherited field is fixed once, on the model that owns it
+      const [cfg, dict, data] = await Promise.all([getPimConfig(), getDictionary(), db.get(PK.rows(id))]);
+      const h = buildHierarchy(data.rows, dict);
+      const aiAttrs = [...new Set(cfg.targetLocales.flatMap((l) => fieldsFor(l, cfg)))];
+      for (const i of picked) {
+        const row = h.byKey.get(i.sku);
+        if (!row) continue;
+        const fields = body.scope === "all" ? aiAttrs : i.flags.filter((f) => !f.startsWith("_")).map((f) => f.split(":")[0]);
+        for (const a of fields) { if (!aiAttrs.includes(a)) continue; const o = h.ownerOf(row, a); if (o.key && !h.isAxis(row, a)) targets.add(o.key); }
+      }
+    } else for (const i of picked) targets.add(i.sku);
+    skus = [...targets].filter((k) => body.redo || !byIdx.get(k)?.suggested);
   }
   if (body.mode === "categories" && !body.skus?.length) {
-    const idx = meta.index || [];
-    skus = (body.scope === "all" ? idx : idx.filter((i) => i.flags.some((f) => f.startsWith("_categories:")))).map((i) => i.sku);
+    skus = (body.scope === "all" ? idx : idx.filter((i) => i.flags.some((f) => f.startsWith("_categories:")))).filter((i) => i.entity !== "model").map((i) => i.sku);
   }
   meta.queue = skus;
   meta.redo = !!body.redo;
@@ -248,32 +307,45 @@ route("POST", "/jobs/:id/run", async ({ id, body, req }) => {
 });
 
 route("GET", "/jobs/:id/export", async ({ id, query }) => {
-  const cfg = await getPimConfig();
+  const [cfg, dict] = await Promise.all([getPimConfig(), getDictionary()]);
   const [data, results] = await Promise.all([db.get(PK.rows(id)), db.get(PK.results(id))]);
+  const h = buildHierarchy(data.rows, dict);
   const includePending = query.get("pending") === "1";
-  const cols = new Set();
+  const cols = new Set(), prodCols = new Set(), modelCols = new Set();
   const rows = [];
   for (const r of data.rows) {
     const res = results?.[r.sku]?.fields || {};
+    const model = isModelRow(r);
     const out = { sku: r.sku };
     for (const [col, v] of Object.entries(res)) {
-      if (!isEditable(col, cfg)) continue;
+      if (!canEdit(r, col, cfg, h)) continue; // never export a value on a level Akeneo would reject
       if (v.status === "accepted" || (includePending && v.status === "pending")) {
-        if (String(v.value) !== String(r[col] ?? "")) { out[col] = v.value; cols.add(col); }
+        if (String(v.value) !== String(r[col] ?? "")) { out[col] = v.value; cols.add(col); (model ? modelCols : prodCols).add(col); }
       }
     }
-    if (Object.keys(out).length > 1) rows.push(out);
+    if (Object.keys(out).length > 1) rows.push({ out, r, model });
   }
-  const changes = rows.reduce((n, r) => n + Object.keys(r).length - 1, 0);
+  const changes = rows.reduce((n, x) => n + Object.keys(x.out).length - 1, 0);
+  // Akeneo identity columns: products by sku, product models by code (+ parent)
+  const ident = (r, model) => (h.hasModels ? { entity_type: model ? "product_model" : "product", code: model ? r.code || r.sku : "", sku: model ? "" : r.sku, parent: r.parent || "" } : { sku: r.sku });
   if (query.get("full") === "1") {
-    // full file: every original column + new locale columns, every product, original values with accepted changes applied
-    const byChanged = new Map(rows.map((r) => [r.sku, r]));
-    const headers = [...data.headers, ...[...cols].filter((c) => !data.headers.includes(c)).sort()];
-    const full = data.rows.map((r) => ({ ...r, ...(byChanged.get(r.sku) || {}) }));
+    const byChanged = new Map(rows.map((x) => [x.r.sku, x.out]));
+    const idCols = h.hasModels ? ["entity_type", "code", "sku", "parent"] : ["sku"];
+    const headers = [...new Set([...idCols, ...data.headers, ...[...cols].filter((c) => !data.headers.includes(c)).sort()])];
+    const full = data.rows.filter((r) => !r._virtual || byChanged.has(r.sku)).map((r) => { const m = isModelRow(r); return { ...r, ...(byChanged.get(r.sku) || {}), ...ident(r, m) }; });
     return { headers, rows: full, changes, full: true };
   }
-  const headers = ["sku", ...[...cols].sort()];
-  return { headers, rows, changes };
+  if (h.hasModels && query.get("split") === "1") {
+    return {
+      changes, split: true,
+      files: [
+        { name: "produtos", headers: ["sku", ...[...prodCols].sort()], rows: rows.filter((x) => !x.model).map((x) => x.out) },
+        { name: "modelos", headers: ["code", ...[...modelCols].sort()], rows: rows.filter((x) => x.model).map((x) => ({ ...x.out, code: x.r.code || x.r.sku })) },
+      ].filter((f) => f.rows.length),
+    };
+  }
+  const headers = h.hasModels ? ["entity_type", "code", "sku", "parent", ...[...cols].sort()] : ["sku", ...[...cols].sort()];
+  return { headers, rows: rows.map((x) => ({ ...x.out, ...ident(x.r, x.model) })), changes, models: h.hasModels };
 });
 
 // ------------------------------------------------------------------ category proposals (review list)
@@ -284,6 +356,7 @@ route("GET", "/jobs/:id/categories", async ({ id }) => {
   const cfg = await getPimConfig();
   const items = [];
   for (const r of data.rows) {
+    if (isModelRow(r)) continue;
     const sg = results?.[r.sku]?.fields?.categories;
     const flags = checkCategories(r, cctx, cfg).flags.map((f) => f.msg);
     if (!sg && !flags.length) continue;
@@ -292,17 +365,6 @@ route("GET", "/jobs/:id/categories", async ({ id }) => {
     items.push({ ...base, add: (sg.catDiff?.add || []).map(lab), remove: (sg.catDiff?.remove || []).map(lab), source: sg.source, status: sg.status, reason: sg.reason || "", aiView: sg.aiView || "" });
   }
   return { items };
-});
-
-route("GET", "/jobs/:id/categories-export", async ({ id }) => {
-  const [data, results] = await Promise.all([db.get(PK.rows(id)), db.get(PK.results(id))]);
-  const rows = [];
-  for (const r of data.rows) {
-    const sg = results?.[r.sku]?.fields?.categories;
-    if (!sg || sg.status !== "accepted" || String(sg.value) === String(r.categories || "")) continue;
-    rows.push({ SKU: r.sku, Nome: r["ATT_NAME-pt_PT-ecommerce"] || "", "Categorias anteriores": r.categories || "", "Categorias propostas": sg.value });
-  }
-  return { headers: ["SKU", "Nome", "Categorias anteriores", "Categorias propostas"], rows };
 });
 
 route("POST", "/jobs/:id/categories/:sku", async ({ id, sku, body }) => {
