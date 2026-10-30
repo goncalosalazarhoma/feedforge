@@ -224,6 +224,9 @@
           <h2>Links finais (para Meta e GMC)</h2>
           ${linkBox("Meta", links.meta)}
           ${S.cfg.gmc?.enabled !== false ? linkBox("Google Merchant Center", links.gmc) : ""}
+          <h2 style="margin-top:14px">Links XML</h2>
+          ${o ? linkBox("Meta (XML)", s.xml?.meta) + (s.xml?.gmc ? linkBox("Google Merchant Center (XML)", s.xml.gmc) : "") : `<p class="muted small">Disponíveis depois do primeiro run.</p>`}
+          <p class="muted small">Mesmo conteúdo do Sheets, em RSS 2.0 com atributos <code>g:</code> (formato aceite pelo Meta e pelo GMC). Acrescenta <code>.gz</code> ao link para uma versão comprimida. Atualiza a cada run (cache de 15 min). <a href="#" id="xml-rotate">Gerar novos links</a> (os atuais deixam de funcionar).</p>
           <p class="muted small">Estes links leem diretamente o separador da Google Sheet em CSV. A sheet tem de estar partilhada como <i>“Qualquer pessoa com o link: leitor”</i>. Em alternativa, usa <i>Ficheiro → Partilhar → Publicar na Web → CSV</i> e cola esse link no Meta/GMC — o conteúdo é o mesmo.</p>
           <div class="row"><button class="btn sm" data-dl="meta">⬇ CSV Meta</button>${S.cfg.gmc?.enabled !== false ? `<button class="btn sm" data-dl="gmc">⬇ CSV GMC</button>` : ""}</div>
         </div>
@@ -247,6 +250,7 @@
     $$("[data-filter]", main).forEach((el) => (el.onclick = () => { S.products = { ...S.products, filter: el.dataset.filter, flag: "", page: 1 }; S.view = "products"; render(); }));
     $$("[data-flag]", main).forEach((el) => (el.onclick = () => { S.products = { ...S.products, filter: "all", flag: el.dataset.flag, page: 1 }; S.view = "products"; render(); }));
     $$("[data-go]", main).forEach((el) => (el.onclick = (e) => { e.preventDefault(); S.view = el.dataset.go; render(); }));
+    if ($("#xml-rotate")) $("#xml-rotate").onclick = async (e) => { e.preventDefault(); if (await ask("Gerar novos links XML? Os links atuais deixam de funcionar — terás de os atualizar no Meta e no GMC.", { ok: "Gerar novos" })) guard(async () => { await api(F("/xml-token"), { method: "POST" }); toast("Novos links XML gerados"); await loadFeed(); render(); }); };
     $$("[data-copy]", main).forEach((el) => (el.onclick = () => { navigator.clipboard.writeText(el.dataset.copy); toast("Link copiado"); }));
     $$("[data-dl]", main).forEach((el) => (el.onclick = () => download(el.dataset.dl)));
   };

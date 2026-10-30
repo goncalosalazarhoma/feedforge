@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 // JSON API for the UI. All routes require  Authorization: Bearer <APP_PASSWORD>.
 import { db, K, listFeeds, getConfig, httpError } from "../lib/store.mjs";
 import { defaultConfig, LABEL_FIELDS, AI_FIELD_PRESETS } from "../lib/defaults.mjs";
@@ -85,8 +86,23 @@ route("POST", "/feeds/:f/test-source", async ({ f, body }) => {
   return { headers: src.headers, count: src.rows.length, sample: src.rows.slice(0, 5), warnings: src.warnings, ms: Date.now() - t, hasId: src.headers.includes(cfg.idField) };
 });
 
-route("GET", "/feeds/:f/summary", async ({ f }) => {
+const newToken = () => crypto.randomBytes(18).toString("base64url");
+async function xmlLinks(f, cfg, origin) {
+  if (!cfg.xmlToken) { cfg.xmlToken = newToken(); await db.set(K.config(f), cfg); }
+  const base = `${origin}/xml/${encodeURIComponent(f)}/${cfg.xmlToken}`;
+  return { meta: `${base}/meta.xml`, gmc: cfg.gmc?.enabled === false ? null : `${base}/gmc.xml` };
+}
+
+route("POST", "/feeds/:f/xml-token", async ({ f, req }) => {
   const cfg = await getConfig(f);
+  cfg.xmlToken = newToken(); // old XML links stop working
+  await db.set(K.config(f), cfg);
+  return { xml: await xmlLinks(f, cfg, new URL(req.url).origin) };
+});
+
+route("GET", "/feeds/:f/summary", async ({ f, req }) => {
+  const cfg = await getConfig(f);
+  const xml = await xmlLinks(f, cfg, new URL(req.url).origin);
   const [out, state, runs, requests, lock, source] = await Promise.all([
     db.get(K.output(f)), db.get(K.state(f)), db.get(K.runs(f)), db.get(K.aiRequests(f)), db.get(K.lock(f)), db.get(K.source(f)),
   ]);
@@ -98,6 +114,7 @@ route("GET", "/feeds/:f/summary", async ({ f }) => {
       isNew: out.index.filter((i) => i.isNew).length, excluded: out.index.filter((i) => i.excluded.meta || i.excluded.gmc).length } : null,
     headers: source?.headers || [],
     sourceFetchedAt: source?.fetchedAt,
+    xml,
     aiQueue: new Set([...(state?.aiQueue || []), ...(requests || [])]).size, // same product queued + requested counts once
     runs: (runs || []).slice(0, 10),
   };
@@ -192,6 +209,20 @@ route("POST", "/feeds/:f/products/:id/ai-accept", async ({ f, id, body }) => {
 });
 
 // accept / reject AI copy waiting for approval (one product or all pending), then rebuild Meta/GMC + Sheets
+// clean the AI queue: drop products that already have AI copy (any status), or empty it
+route("POST", "/feeds/:f/ai-queue/prune", async ({ f, body }) => {
+  const lock = await db.get(K.lock(f));
+  if (lock && Date.now() - lock.at < 20 * 60 * 1000) throw httpError(409, "Há um run em curso — tenta quando acabar");
+  const [state, requests, ai] = await Promise.all([db.get(K.state(f)), db.get(K.aiRequests(f)), db.get(K.ai(f))]);
+  const all = body.mode === "all";
+  const keep = (id) => !all && !(ai || {})[id];
+  const before = new Set([...(state?.aiQueue || []), ...(requests || [])]).size;
+  if (state) { state.aiQueue = (state.aiQueue || []).filter(keep); await db.set(K.state(f), state); }
+  await db.set(K.aiRequests(f), (requests || []).filter(keep));
+  const after = new Set([...(state?.aiQueue || []), ...((requests || []).filter(keep))]).size;
+  return { removed: before - after, remaining: after };
+});
+
 route("POST", "/feeds/:f/ai-review", async ({ f, body, req }) => {
   const status = body.action === "reject" ? "rejected" : "accepted";
   const all = (await db.get(K.ai(f))) || {};

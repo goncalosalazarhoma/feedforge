@@ -115,3 +115,8 @@ Ficheiros: `netlify/lib/pim.mjs`, `netlify/lib/akeneo-dictionary.mjs`, `netlify/
 - Para identificar a variante, o export deve trazer `family` (e idealmente `family_variant`). Sem isso usa consenso entre variantes e, em último caso, a herança de valores; se não houver certeza, o campo fica trancado.
 - AI, deduções e labels só propõem no nível dono; os produtos mostram o campo como "herdado do modelo X" e os problemas como "corrigir no modelo X". A completude estimada dos produtos conta as alterações aceites nos modelos.
 - Export: ficheiro único com `entity_type/code/sku/parent` ou "Produtos + modelos separados" (dois ficheiros: `sku` e `code`).
+
+## Feed em XML
+Além do Sheets (CSV), cada feed tem links XML públicos (Dashboard → Links XML), gerados a partir do output do último run:
+`/xml/<feed>/<token>/meta.xml` e `/xml/<feed>/<token>/gmc.xml` (acrescenta `.gz` para a versão comprimida).
+Formato RSS 2.0 com atributos `g:` (aceite pelo Meta e pelo GMC); `additional_image_link` sai repetido e `shipping` com sub-elementos. O token impede que o link seja adivinhado; "Gerar novos links" invalida os atuais. Cache de 15 min na CDN da Netlify.
