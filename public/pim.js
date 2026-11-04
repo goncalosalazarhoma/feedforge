@@ -53,8 +53,35 @@
 
   // ================================================================ files
   async function drawFiles(box) {
-    const jobs = (await guard(() => papi("/jobs"))) || [];
+    const [jobs, ak, dict] = await Promise.all([guard(() => papi("/jobs")).then((x) => x || []), papi("/akeneo/status").catch(() => null), P.dict ? P.dict : papi("/dictionary").catch(() => null)]);
+    P.dict = dict;
+    const fams = Object.entries(dict?.families || {}).map(([code, f]) => [code, f.label || code]).sort((a, b) => a[1].localeCompare(b[1]));
+    const importing = jobs.some((j) => j.status === "importing");
     box.innerHTML = `
+      <div class="card">
+        <h2>Importar diretamente do Akeneo</h2>
+        ${ak?.missing?.length ? `<div class="callout" style="margin-bottom:10px">Falta configurar no Netlify (Site configuration → Environment variables): ${ak.missing.map((m) => `<code>${esc(m)}</code>`).join(" ")} — e opcionalmente <code>AKENEO_URL</code> (por omissão ${esc(ak.url)}). Depois faz um novo deploy.</div>` : ""}
+        <div class="form">
+          <div class="grid two">
+            <label class="f">Nome <input id="ak-name" placeholder="ex.: Natal incompletos" /></label>
+            <label class="f">Máximo de produtos <input id="ak-limit" type="number" value="1000" min="1" max="5000" /></label>
+          </div>
+          <label class="f">Famílias <span class="muted small">(vazio = todas · Ctrl/Cmd para várias)</span>
+            <select id="ak-fam" multiple size="5">${fams.map(([c, l]) => `<option value="${esc(c)}">${esc(l)} · ${esc(c)}</option>`).join("")}</select></label>
+          <div class="grid two">
+            <label class="f">Categorias (códigos, separados por vírgula) <input id="ak-cats" placeholder="ex.: ecom_Christmas" /></label>
+            <label class="f">Atualizados desde <input id="ak-since" type="date" /></label>
+          </div>
+          <label class="f">SKUs (opcional, um por linha ou separados por vírgula) <textarea id="ak-skus" rows="2"></textarea></label>
+          <div class="row">
+            <label class="chk"><input type="checkbox" id="ak-incomplete" checked /> Só incompletos (completude ${esc(P.cfg?.channel || "ecommerce")} · ${esc(P.cfg?.sourceLocale || "pt_PT")} &lt; 100%)</label>
+            <label class="chk"><input type="checkbox" id="ak-enabled" /> Só ativos</label>
+            <label class="chk"><input type="checkbox" id="ak-models" checked /> Incluir modelos (variantes)</label>
+          </div>
+          <div class="row"><button class="btn" id="ak-test">Testar ligação</button><button class="btn primary" id="ak-import" ${ak?.missing?.length ? "disabled" : ""}>Importar do Akeneo</button><span class="muted small" id="ak-status"></span></div>
+          <p class="muted small">Só leitura: a app lê produtos e modelos pela API do Akeneo (${esc(ak?.url || "")}); nada é escrito no Akeneo. O resultado fica como um ficheiro normal — diagnóstico, AI e export XLSX como sempre.</p>
+        </div>
+      </div>
       <div class="card">
         <h2>Carregar export do Akeneo</h2>
         <div class="row"><input type="file" id="pim-file" accept=".xlsx,.xls,.csv" /><span class="muted small" id="pim-up-status"></span></div>
@@ -64,11 +91,20 @@
         <h2>Ficheiros</h2>
         ${jobs.length ? `<table><tr><th>Nome</th><th>Produtos</th><th>Carregado</th><th>Progresso AI</th><th></th></tr>
           ${jobs.map((j) => `<tr class="click" data-job="${esc(j.id)}"><td>${esc(j.name)}</td><td>${j.count ?? "—"}</td><td class="small">${fmtDate(j.createdAt)}</td>
-            <td class="small">${j.progress ? `${j.progress.done}/${j.progress.total}${j.progress.remaining ? ` · ${j.progress.remaining} por fazer` : ""}` : "—"}</td>
+            <td class="small">${j.status === "importing" ? `⏳ a importar do Akeneo · ${esc(j.import?.phase || "")} ${j.import?.done ?? 0}${j.import?.models ? ` + ${j.import.models} modelos` : ""}` : j.status === "error" ? `<span class="err">Erro: ${esc(j.import?.error || "")}</span>` : j.progress ? `${j.progress.done}/${j.progress.total}${j.progress.remaining ? ` · ${j.progress.remaining} por fazer` : ""}` : j.import?.truncated ? `<span class="muted">limite atingido (${j.import.done})</span>` : "—"}</td>
             <td><button class="btn sm ghost danger" data-del="${esc(j.id)}">✕</button></td></tr>`).join("")}</table>` : `<p class="muted">Ainda não carregaste nenhum ficheiro.</p>`}
       </div>`;
     $("#pim-file").onchange = (e) => upload(e.target.files[0]);
-    $$("tr[data-job]", box).forEach((tr) => (tr.onclick = (e) => { if (e.target.dataset.del) return; P.jobId = tr.dataset.job; P.list = { q: "", filter: "", flag: "", page: 1 }; drawJob(box); }));
+    $("#ak-test").onclick = (e) => guard(async () => { const r = await papi("/akeneo/test", { method: "POST" }); $("#ak-status").textContent = `✓ Ligado a ${r.url} · canais: ${r.channels.join(", ")}${r.families != null ? ` · ${r.families} famílias` : ""}`; }, e.target);
+    $("#ak-import").onclick = (e) => guard(async () => {
+      const body = { name: $("#ak-name").value.trim(), limit: Number($("#ak-limit").value) || 1000, families: [...$("#ak-fam").selectedOptions].map((o) => o.value), categories: $("#ak-cats").value, updatedSince: $("#ak-since").value, skus: $("#ak-skus").value, incompleteOnly: $("#ak-incomplete").checked, enabledOnly: $("#ak-enabled").checked, includeModels: $("#ak-models").checked };
+      await papi("/akeneo/import", { method: "POST", body });
+      toast("Importação iniciada — aparece na lista em baixo");
+      drawFiles(box);
+    }, e.target);
+    clearTimeout(P.filesPoll);
+    if (importing) P.filesPoll = setTimeout(() => { if (S.view === "pim" && !P.jobId && P.tab === "files") drawFiles(box); }, 4000);
+    $$("tr[data-job]", box).forEach((tr) => (tr.onclick = (e) => { if (e.target.dataset.del) return; const jb = jobs.find((x) => x.id === tr.dataset.job); if (jb?.status === "importing") return toast("Ainda a importar do Akeneo…"); P.jobId = tr.dataset.job; P.list = { q: "", filter: "", flag: "", page: 1 }; drawJob(box); }));
     $$("[data-del]", box).forEach((b) => (b.onclick = () => guard(async () => { if (!(await ask("Apagar este ficheiro e as sugestões?", { ok: "Apagar", danger: true }))) return; await papi(`/jobs/${b.dataset.del}`, { method: "DELETE" }); drawFiles(box); })));
   }
 
