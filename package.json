@@ -6,7 +6,7 @@
   "description": "hôma product feed optimizer — Meta + GMC, regras, labels, AI e export para Google Sheets",
   "scripts": {
     "dev": "netlify dev",
-    "test": "node test/pipeline.test.mjs"
+    "test": "node test/pipeline.test.mjs && node test/filo.test.mjs"
   },
   "dependencies": {
     "@netlify/blobs": "^8.1.0",

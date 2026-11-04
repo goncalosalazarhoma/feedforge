@@ -30,6 +30,8 @@ Campos **trancados** (por omissão `id, availability, price, sale_price, sale_pr
 | `ANTHROPIC_API_KEY` | chave da API Anthropic |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | conteúdo do JSON da service account (pode ser colado tal como está, ou em base64) |
 | `AI_MODEL` *(opcional)* | sobrepõe o modelo definido na app (por omissão `claude-haiku-4-5`) |
+| `FILO_INBOX_URL` *(opcional)* | endpoint do Filo que recebe o relatório de cada run (ex.: `https://filo-team-org.lovable.app/api/public/integrations/feedforge`) |
+| `FILO_API_KEY` *(opcional)* | chave do Filo (enviada como `Authorization: Bearer …`) |
 
 Depois de definir as variáveis, faz *Deploys → Trigger deploy*.
 
@@ -82,6 +84,12 @@ netlify/lib/sheets.mjs                Google Sheets via service account (JWT, se
 public/                               UI (HTML/CSS/JS sem build)
 test/pipeline.test.mjs                teste local: npm install && npm test
 ```
+
+## Relatório para o Filo
+No fim de cada run (incluindo runs que falham), `run-background` envia um `POST` para `FILO_INBOX_URL` com o catálogo de métricas, as métricas do dia (data de Lisboa, dimensão `market` PT/ES a partir da língua do feed), um evento `run_completed` (`success` · `partial` · `failed`) e, só quando há erros, um alerta (`warning`) ou falha (`critical`).
+- `feed_products_changed` = novos + conteúdo alterado + só stock/preço no diff do dia; `feed_errors` = produtos em que a AI falhou + 1 se a AI parou (chave/créditos) + 1 se o run falhou.
+- Métricas só em runs completos (o "Aplicar alterações" envia só o evento). Timeout de 15 s, até 3 novas tentativas em 429/5xx/erro de rede (2 s, 4 s, 8 s). Sem as duas variáveis, o envio é ignorado com um aviso no log. Uma falha no Filo nunca afeta o run.
+- Código: `netlify/lib/filo.mjs`; teste: `node test/filo.test.mjs`.
 
 ## Notas
 - O run agendado arranca à hora definida (Lisboa); se falhar, tenta na hora seguinte (até 3x por dia). Runs manuais não contam como o run do dia.
