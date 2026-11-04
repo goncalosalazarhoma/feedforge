@@ -224,7 +224,7 @@ export async function runFeed(feedId, { mode = "full", trigger = "manual", deadl
         const take = state.aiQueue.slice(0, cfg.ai.maxPerRun || 300);
         const batches = [];
         for (let i = 0; i < take.length; i += 5) batches.push(take.slice(i, i + 5));
-        let errors = 0;
+        let errors = 0, failed = 0; // failed = products the AI could not optimise this run
         let fatal = null; // invalid key / model: stop AI, don't penalise products
         await mapLimit(batches, 3, async (ids) => {
           if (fatal || Date.now() > deadline - 90_000) return;
@@ -240,6 +240,7 @@ export async function runFeed(feedId, { mode = "full", trigger = "manual", deadl
                 generated[id] = { fields: res[id], inputHash: aiInputHash(it.row, cfg), at: new Date().toISOString(), model: cfg.ai.model, status: needsApproval(cfg) ? "pending" : "accepted" };
               } else {
                 state.aiFails[id] = (state.aiFails[id] || 0) + 1;
+                failed++;
               }
             }
           } catch (e) {
@@ -248,13 +249,14 @@ export async function runFeed(feedId, { mode = "full", trigger = "manual", deadl
               return;
             }
             errors++;
+            failed += ids.length;
             for (const id of ids) state.aiFails[id] = (state.aiFails[id] || 0) + 1;
             if (errors <= 3) step(`Erro AI: ${e.message}`);
           }
         });
         state.aiQueue =state.aiQueue.filter((id) => !generated[id] && (state.aiFails[id] || 0) < 3);
         Object.assign(ai, generated);
-        log.ai = { optimized: Object.keys(generated).length, remaining: state.aiQueue.length, errors, fatal: fatal?.message };
+        log.ai = { optimized: Object.keys(generated).length, remaining: state.aiQueue.length, errors, failed, fatal: fatal?.message };
         step(`AI: ${Object.keys(generated).length} produtos otimizados, ${state.aiQueue.length} em fila`);
       }
     }
