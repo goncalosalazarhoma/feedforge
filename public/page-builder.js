@@ -20,7 +20,7 @@
   const PB = {
     screen: "list", el: null, rec: null, saved: "", sel: null, tab: "estrutura", device: "desktop",
     hyd: { products: {}, counts: {} }, hydKey: "", pickers: {}, notes: [], pending: null, showPending: true,
-    exportRes: null, settings: null, gen: null,
+    exportRes: null, settings: null, gen: null, nodeSel: {}, customBlocks: null, slot: null,
   };
   const author = () => lsGet("ff-author") || "";
   const dirty = () => PB.el && JSON.stringify(PB.el) !== PB.saved;
@@ -206,6 +206,7 @@
     $$("[data-dev]", main).forEach((c) => (c.onclick = () => { PB.device = c.dataset.dev; drawWorkspace(main); }));
     $$("[data-tab]", main).forEach((c) => (c.onclick = () => { PB.tab = c.dataset.tab; $$("[data-tab]", main).forEach((x) => x.classList.toggle("on", x === c)); drawTab(); }));
     PB.main = main;
+    if (!PB.customBlocks) api("/page-builder/custom-blocks").then((l) => { PB.customBlocks = l; if (PB.tab === "estrutura") drawTab(); }).catch(() => { PB.customBlocks = []; });
     buildFrame();
     drawTab();
     markDirty();
@@ -281,10 +282,11 @@
 
   // product blocks → /api/page-builder/hydrate (only when a product source / limit / market changed)
   async function hydrate(el) {
-    const key = JSON.stringify([el.market, el.blocks.filter((b) => E.PRODUCT_BLOCKS.includes(b.type)).map((b) => [b.id, b.props.productSource, b.props.limit])]);
+    const slots = E.productSlots(el);
+    const key = JSON.stringify([el.market, slots.map((s) => [s.key, s.source, s.limit])]);
     if (key === PB.hydKey) return;
     PB.hydKey = key;
-    if (!el.blocks.some((b) => E.PRODUCT_BLOCKS.includes(b.type))) { PB.hyd = { products: {}, counts: {} }; return; }
+    if (!slots.length) { PB.hyd = { products: {}, counts: {} }; return; }
     try { PB.hyd = await api("/page-builder/hydrate", { method: "POST", body: { element: el } }); }
     catch (e) { toast(e.message, true); PB.hyd = { products: {}, counts: {} }; }
     const c = $("#pb-count"); if (c) c.textContent = countText();
@@ -302,7 +304,8 @@
     return drawAI(box);
   }
 
-  const blockTitle = (b) => b.props.title || b.props.eyebrow || b.items?.[0]?.title || b.items?.[0]?.label || (b.props.productSource ? (b.props.productSource.mode === "manual" ? `${b.props.productSource.ids.length} produtos escolhidos` : [b.props.productSource.category, b.props.productSource.subcategory].filter(Boolean).join(" › ") || "regra") : "");
+  const treeTitle = (t) => { let x = ""; E.walkNodes(t, (n) => { if (!x && (n.text || n.label)) x = n.text || n.label; }); return x; };
+  const blockTitle = (b) => (b.type === "composition" ? treeTitle(b.props.tree) : "") || b.props.title || b.props.eyebrow || b.items?.[0]?.title || b.items?.[0]?.label || (b.props.productSource ? (b.props.productSource.mode === "manual" ? `${b.props.productSource.ids.length} produtos escolhidos` : [b.props.productSource.category, b.props.productSource.subcategory].filter(Boolean).join(" › ") || "regra") : "");
 
   function drawStructure(box) {
     const el = PB.el;
@@ -310,11 +313,14 @@
       ${el.blocks.length ? "" : `<p class="muted small">Sem blocos. Adiciona o primeiro em baixo ou usa o separador IA.</p>`}
       <div id="pb-blocks">${el.blocks.map((b, i) => `<div class="pb-blk ${b.id === PB.sel ? "on" : ""}" data-i="${i}" data-id="${esc(b.id)}">
         <span class="handle" title="Arrastar">⠿</span><span class="small muted">${i + 1}</span>
-        <div class="t"><div><b>${esc(E.BLOCKS[b.type].label)}</b>${b.props.hideOn ? ` <span class="badge">sem ${b.props.hideOn}</span>` : ""}</div><div class="muted">${esc(blockTitle(b))}</div></div>
+        <div class="t"><div><b>${esc(E.BLOCKS[b.type].label)}</b>${b.type === "composition" ? (b.props.template ? ` <span class="badge ai" title="Bloco guardado">${esc(customName(b.props.template))}</span>` : ` <span class="badge edit">nova</span>`) : ""}${b.props.hideOn ? ` <span class="badge">sem ${b.props.hideOn}</span>` : ""}</div><div class="muted">${esc(blockTitle(b))}</div></div>
         <button class="btn sm ghost" data-mv="-1" title="Subir">↑</button><button class="btn sm ghost" data-mv="1" title="Descer">↓</button>
         <button class="btn sm ghost" data-hide="mobile" title="Esconder no mobile">${b.props.hideOn === "mobile" ? "📵" : "📱"}</button><button class="btn sm ghost" data-hide="desktop" title="Esconder no desktop">${b.props.hideOn === "desktop" ? "⊘" : "🖥"}</button>
         <button class="btn sm ghost" data-cp title="Duplicar">⧉</button><button class="btn sm ghost danger" data-rm title="Apagar">✕</button></div>`).join("")}</div>
-      <div class="row" style="margin-top:10px"><select id="pb-add" style="flex:1"><option value="">＋ Adicionar bloco…</option>${E.BLOCK_TYPES.map((t) => `<option value="${t}">${esc(E.BLOCKS[t].label)} — ${esc(E.BLOCKS[t].figma)}</option>`).join("")}</select></div>
+      <div class="row" style="margin-top:10px"><select id="pb-add" style="flex:1"><option value="">＋ Adicionar bloco…</option>
+        <optgroup label="Biblioteca">${E.BLOCK_TYPES.filter((t) => t !== "composition").map((t) => `<option value="${t}">${esc(E.BLOCKS[t].label)} — ${esc(E.BLOCKS[t].figma)}</option>`).join("")}</optgroup>
+        <optgroup label="Blocos guardados">${(PB.customBlocks || []).map((c) => `<option value="cb:${esc(c.id)}">${esc(c.name)}</option>`).join("") || `<option disabled>(ainda nenhum)</option>`}</optgroup>
+        <optgroup label="Novo"><option value="composition">Composição em branco (primitivas do design system)</option></optgroup></select></div>
       <p class="pb-help" style="margin-top:6px">O novo bloco entra a seguir ao bloco selecionado.</p>`;
     const at = (row) => el.blocks.findIndex((b) => b.id === row.dataset.id);
     $$(".pb-blk", box).forEach((row) => {
@@ -328,7 +334,8 @@
     PP.enableReorder($("#pb-blocks", box), ".pb-blk", (from, to) => move(from, to));
     $("#pb-add").onchange = (e) => {
       const t = e.target.value; if (!t) return;
-      const b = E.blankBlock(t);
+      const cb = t.startsWith("cb:") ? (PB.customBlocks || []).find((c) => c.id === t.slice(3)) : null;
+      const b = cb ? E.normalizeBlock({ type: "composition", props: { ...(cb.props || {}), tree: E.cloneTree(cb.tree), template: cb.id } }) : E.blankBlock(t);
       const i = el.blocks.findIndex((x) => x.id === PB.sel);
       el.blocks.splice(i < 0 ? el.blocks.length : i + 1, 0, b);
       PB.sel = b.id; PB.tab = "bloco"; $$("[data-tab]").forEach((x) => x.classList.toggle("on", x.dataset.tab === "bloco"));
@@ -365,7 +372,7 @@
       case "enum":
         if (path.endsWith("props.background") || path.endsWith(".bg")) {
           const opts = f.options;
-          return `<div class="f" style="font-size:12px;color:var(--muted)">${esc(f.label)}<div class="pb-sw">${opts.map(([o, l]) => `<label class="${o === v ? "on" : ""}"><input type="radio" name="${id}" data-path="${path}" value="${esc(o)}" ${o === v ? "checked" : ""} hidden/><i style="background:${o === "image" ? "linear-gradient(135deg,#999,#333)" : E.BACKGROUNDS[o].bg}"></i>${esc(l.split(" (")[0])}</label>`).join("")}</div></div>`;
+          return `<div class="f" style="font-size:12px;color:var(--muted)">${esc(f.label)}<div class="pb-sw">${opts.map(([o, l]) => `<label class="${o === v ? "on" : ""}"><input type="radio" name="${id}" data-path="${path}" value="${esc(o)}" ${o === v ? "checked" : ""} hidden/><i style="background:${o === "image" ? "linear-gradient(135deg,#999,#333)" : E.BACKGROUNDS[o]?.bg || { none: "repeating-linear-gradient(45deg,#fff 0 4px,#e5e5e5 4px 8px)", surface: "#f3f3f3", glass: "rgba(255,255,255,.6)" }[o] || "#fff"}"></i>${esc(l.split(" (")[0])}</label>`).join("")}</div></div>`;
         }
         return `<label class="f">${esc(f.label)}<select data-path="${path}" data-type="${typeof f.options[0][0] === "number" ? "num" : "str"}">${f.options.map(([o, l]) => `<option value="${esc(o)}" ${o === v ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>`;
       case "int": return `<label class="f">${esc(f.label)}<span class="row" style="flex-wrap:nowrap"><input type="range" min="${f.min}" max="${f.max}" value="${v}" data-path="${path}" data-type="num" style="flex:1"/><input type="number" min="${f.min}" max="${f.max}" value="${v}" data-path="${path}" data-type="num" style="width:72px"/></span></label>`;
@@ -378,9 +385,10 @@
   function drawBlock(box) {
     const b = blk();
     if (!b) { box.innerHTML = `<p class="muted small">Seleciona um bloco na estrutura ou na pré-visualização.</p>`; return; }
+    if (b.type === "composition") return drawComposition(box, b);
     const d = E.BLOCKS[b.type];
     const i = PB.el.blocks.indexOf(b);
-    box.innerHTML = `<div class="small muted" style="margin-bottom:8px">Bloco ${i + 1} · <b>${esc(d.label)}</b> <span class="mono">${esc(b.type)}</span> · Figma: ${esc(d.figma)}</div>
+    box.innerHTML = `<div class="row small muted" style="margin-bottom:8px"><span>Bloco ${i + 1} · <b>${esc(d.label)}</b> <span class="mono">${esc(b.type)}</span> · Figma: ${esc(d.figma)}</span><span class="grow"></span><button class="btn sm" id="pb-convert" title="Abre o bloco em primitivas do design system para o adaptar livremente">Adaptar (converter em composição)</button></div>
       <div class="form">${Object.entries(d.props).map(([k, f]) => fieldHtml(f, `props.${k}`, b.props[k])).join("")}</div>
       ${d.items ? `<h3>${esc(d.items.label)}s · ${b.items.length}/${d.items.max}</h3><div>${b.items.map((it, j) => `<div class="pb-item"><div class="row small" style="margin-bottom:6px"><b>${esc(d.items.label)} ${j + 1}</b><span class="grow"></span>
           <button class="btn sm ghost" data-it="up" data-j="${j}" ${j ? "" : "disabled"}>↑</button><button class="btn sm ghost" data-it="down" data-j="${j}" ${j < b.items.length - 1 ? "" : "disabled"}>↓</button><button class="btn sm ghost" data-it="dup" data-j="${j}" ${b.items.length < d.items.max ? "" : "disabled"}>⧉</button><button class="btn sm ghost danger" data-it="rm" data-j="${j}">✕</button></div>
@@ -388,6 +396,13 @@
         ${b.items.length < d.items.max ? `<button class="btn sm" data-it="add">＋ ${esc(d.items.label)}</button>` : ""}` : ""}
       <details class="pb-adv" ${["background", "fullBleed"].some((k) => b.props[k] !== (d.defaults?.[k] ?? E.COMMON[k].default)) ? "open" : ""}><summary>Aparência e espaçamento</summary><div class="form">${Object.entries(E.COMMON).filter(([k]) => k !== "backgroundImage" || b.props.background === "image").map(([k, f]) => fieldHtml(f, `props.${k}`, b.props[k])).join("")}</div></details>`;
     bindForm(box, b);
+    $("#pb-convert", box).onclick = async () => {
+      if (!(await ask("Converter este bloco numa composição? Passas a poder mudar a estrutura (colunas, painéis, textos, botões) com as primitivas do design system. O aspeto pode mudar ligeiramente.", { ok: "Converter" }))) return;
+      const i = PB.el.blocks.indexOf(b);
+      PB.el.blocks[i] = E.blockToComposition(b);
+      PB.nodeSel[b.id] = ""; PB.hydKey = "";
+      drawBlock(box); changed(); toast("Convertido — edita as peças em baixo");
+    };
     if (b.props.productSource) drawProducts(b);
   }
 
@@ -402,10 +417,10 @@
         if (inp.type === "range" || inp.type === "number") $$(`[data-path="${p}"]`, box).forEach((o) => { if (o !== inp) o.value = v; });
         if (p.endsWith(".url")) linkInfo(box, p.slice(0, -4), v);
         if (p.endsWith(".src")) imgInfo(box, p.slice(0, -4), v);
-        const structural = p === "props.background" || p.endsWith(".variant") || p === "props.limit" || p.endsWith(".bg");
-        if (p === "props.limit" && b.props.productSource?.mode === "rule") b.props.productSource.limit = v;
+        const structural = p === "props.background" || p.endsWith(".variant") || p.endsWith(".bg");
+        if (p.endsWith(".limit")) { const holder = getPath(b, p.slice(0, -6)); if (holder?.productSource?.mode === "rule") holder.productSource.limit = v; }
         if (inp.type === "radio") $$(`input[name="${inp.name}"]`, box).forEach((r) => r.closest("label").classList.toggle("on", r.checked));
-        if (structural && (p.endsWith(".variant") || p === "props.background")) drawBlock(box);
+        if (structural) drawBlock(box);
         changed();
         if (p === "props.title" || p.endsWith(".title")) { const st = $("#pb-blocks"); if (st) drawStructure($("#pb-tab")); }
       });
@@ -445,24 +460,26 @@
   }
 
   // ---------- product source: manual (shared ProductPicker) or rule (live count)
-  const countText = () => { const b = blk(); if (!b?.props.productSource) return ""; const n = PB.hyd.counts?.[b.id]; return n == null ? "" : b.props.productSource.mode === "rule" ? `${n} produto(s) correspondem · mostra ${Math.min(n, b.props.limit)}` : `${n} escolhido(s)`; };
-  async function drawProducts(b) {
+  const countText = () => { const sl = PB.slot; if (!sl?.holder?.productSource) return ""; const n = PB.hyd.counts?.[sl.key]; return n == null ? "" : sl.holder.productSource.mode === "rule" ? `${n} produto(s) correspondem · mostra ${Math.min(n, sl.holder.limit)}` : `${n} escolhido(s)`; };
+  // holder = object with productSource + limit (block props or a "products" node); key = hydration slot
+  async function drawProducts(b, holder = b.props, key = b.id, limitPath = "props.limit") {
     const box = $("#pb-products"); if (!box) return;
-    const src = b.props.productSource, market = PB.el.market;
+    PB.slot = { holder, key };
+    const src = holder.productSource, market = PB.el.market;
     box.innerHTML = `<div class="f" style="font-size:12px;color:var(--muted)">Produtos</div>
       <div class="chips" style="margin:4px 0 8px"><span class="chip ${src.mode === "rule" ? "on" : ""}" data-mode="rule">Regra (do feed)</span><span class="chip ${src.mode === "manual" ? "on" : ""}" data-mode="manual">Escolher produtos</span></div>
       <div id="pb-src"></div><div class="small" style="margin-top:6px"><b id="pb-count">${esc(countText())}</b></div>`;
     $$("[data-mode]", box).forEach((c) => (c.onclick = () => {
       if (c.dataset.mode === src.mode) return;
-      b.props.productSource = c.dataset.mode === "manual" ? { mode: "manual", ids: (PB.hyd.products[b.id] || []).filter((p) => !p.missing).map((p) => p.id) } : E.normalizeSource({ mode: "rule" }, b.props.limit);
-      drawProducts(b); changed();
+      holder.productSource = c.dataset.mode === "manual" ? { mode: "manual", ids: (PB.hyd.products[key] || []).filter((p) => !p.missing).map((p) => p.id) } : E.normalizeSource({ mode: "rule" }, holder.limit);
+      drawProducts(b, holder, key, limitPath); changed();
     }));
     const inner = $("#pb-src", box);
     if (src.mode === "manual") {
-      PB.pickers[b.id] ||= PP.newState();
+      PB.pickers[key] ||= PP.newState();
       return PP.mount(inner, {
-        market, state: PB.pickers[b.id], addLabel: "Adicionar", selectedLabel: "✓ no bloco",
-        selected: { title: "Produtos do bloco", ids: () => src.ids, onChange: (ids) => { src.ids = ids.slice(0, 48); if (src.ids.length > b.props.limit) { b.props.limit = Math.min(24, src.ids.length); $$('[data-path="props.limit"]').forEach((o) => (o.value = b.props.limit)); } changed(); } },
+        market, state: PB.pickers[key], addLabel: "Adicionar", selectedLabel: "✓ no bloco",
+        selected: { title: "Produtos do bloco", ids: () => src.ids, onChange: (ids) => { src.ids = ids.slice(0, 48); if (src.ids.length > holder.limit) { holder.limit = Math.min(24, src.ids.length); $$(`[data-path="${limitPath}"]`).forEach((o) => (o.value = holder.limit)); } changed(); } },
       });
     }
     const tree = await guard(() => PP.categories(market));
@@ -478,16 +495,97 @@
       const k = i.dataset.r;
       let v = i.type === "checkbox" ? i.checked : i.value;
       if (k === "priceMin" || k === "priceMax") { if (v === "") delete src[k]; else src[k] = Number(v); } else src[k] = v;
-      if (k === "category") { src.subcategory = ""; drawProducts(b); }
+      if (k === "category") { src.subcategory = ""; drawProducts(b, holder, key, limitPath); }
       changed();
     }));
     $("#pb-freeze", inner).onclick = async () => {
       PB.hydKey = ""; await hydrate(PB.el);
-      const ids = (PB.hyd.products[b.id] || []).filter((p) => !p.missing).map((p) => p.id);
+      const ids = (PB.hyd.products[key] || []).filter((p) => !p.missing).map((p) => p.id);
       if (!ids.length) return toast("A regra não dá nenhum produto", true);
-      b.props.productSource = { mode: "manual", ids };
-      drawProducts(b); changed(); toast(`${ids.length} produtos fixados`);
+      holder.productSource = { mode: "manual", ids };
+      drawProducts(b, holder, key, limitPath); changed(); toast(`${ids.length} produtos fixados`);
     };
+  }
+
+  // ---------- composition: tree of design-system primitives
+  const nodePath = (ps) => "props.tree" + (ps ? ps.split(".").map((i) => `.children.${i}`).join("") : "");
+  const nodeAt = (tree, ps) => (ps ? ps.split(".").reduce((n, i) => n?.children?.[+i], tree) : tree);
+  const customName = (id) => (PB.customBlocks || []).find((c) => c.id === id)?.name || "bloco guardado";
+  const nodeSummary = (n) => {
+    if (n.kind === "text") return `${E.TEXT_STYLES[n.style]?.[0] || ""} · ${n.text || "—"}`;
+    if (n.kind === "button" || n.kind === "badge") return n.label || "—";
+    if (n.kind === "image") return n.image?.alt || n.image?.description || "sem imagem";
+    if (n.kind === "panel") return [({ none: "sem fundo", image: "imagem", glass: "glass" }[n.bg] || (Object.fromEntries(E.PANEL_BGS)[n.bg] || n.bg).split(" #")[0].toLowerCase()), n.aspect !== "auto" ? n.aspect : ""].filter(Boolean).join(" · ");
+    if (n.kind === "row") return `${n.cols} colunas · mobile ${n.mobile === "scroll" ? "scroll" : n.mobile}`;
+    if (n.kind === "stack") return `${n.children.length} elemento(s)`;
+    if (n.kind === "products") return n.productSource?.mode === "manual" ? `${n.productSource.ids.length} escolhidos` : [n.productSource?.category, n.productSource?.subcategory].filter(Boolean).join(" › ") || "regra";
+    if (n.kind === "icon") return n.icon;
+    return "";
+  };
+  const kindOptions = (containersOnly = false) => E.PRIM_KINDS.filter((k) => !containersOnly || E.PRIMS[k].container).map((k) => `<option value="${k}">${esc(E.PRIMS[k].label)}${E.PRIMS[k].container ? " ▸" : ""}</option>`).join("");
+
+  function drawComposition(box, b) {
+    const i = PB.el.blocks.indexOf(b), tree = b.props.tree;
+    let sel = PB.nodeSel[b.id] ?? "";
+    if (!nodeAt(tree, sel)) sel = PB.nodeSel[b.id] = "";
+    const node = nodeAt(tree, sel), P = E.PRIMS[node.kind];
+    const rows = [];
+    const walk = (n, ps, depth) => {
+      rows.push(`<div class="pb-node ${ps === sel ? "on" : ""}" data-np="${ps}" style="padding-left:${6 + depth * 14}px"><b>${esc(E.PRIMS[n.kind].label)}</b> <span class="s muted">${esc(nodeSummary(n))}</span></div>`);
+      (n.children || []).forEach((c, j) => walk(c, ps === "" ? String(j) : `${ps}.${j}`, depth + 1));
+    };
+    walk(tree, "", 0);
+    const parentPs = sel.includes(".") ? sel.slice(0, sel.lastIndexOf(".")) : "";
+    const idx = sel === "" ? -1 : +sel.split(".").pop();
+    const siblings = sel === "" ? [] : nodeAt(tree, parentPs).children;
+    box.innerHTML = `
+      <style>.pb-tree{border:1px solid var(--line);border-radius:8px;max-height:260px;overflow:auto;background:#fff}.pb-node{padding:5px 8px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pb-node.on{background:var(--soft);box-shadow:inset 3px 0 0 var(--accent)}</style>
+      <div class="row small muted" style="margin-bottom:8px"><span>Bloco ${i + 1} · <b>Composição</b> ${b.props.template ? `<span class="badge ai">${esc(customName(b.props.template))}</span>` : `<span class="badge edit">nova</span>`}</span><span class="grow"></span><button class="btn sm" id="pb-savecb">${b.props.template ? "Guardar como novo bloco" : "Guardar como bloco"}</button></div>
+      <p class="pb-help" style="margin:0 0 8px">Peças do design system hôma: colunas, pilhas, painéis (cor, glass ou imagem), textos com os estilos do Figma, botões, badges, ícones, imagens e produtos do feed.</p>
+      <div class="pb-tree">${rows.join("")}</div>
+      <div class="row small" style="margin:8px 0;flex-wrap:wrap;gap:6px">
+        ${sel !== "" ? `<button class="btn sm ghost" data-na="up" ${idx > 0 ? "" : "disabled"}>↑</button><button class="btn sm ghost" data-na="down" ${idx < siblings.length - 1 ? "" : "disabled"}>↓</button><button class="btn sm ghost" data-na="dup">⧉ Duplicar</button><button class="btn sm ghost danger" data-na="rm">✕ Apagar</button>` : ""}
+        ${P.container ? `<select id="pb-addin" style="max-width:170px"><option value="">＋ Dentro…</option>${kindOptions()}</select>` : ""}
+        ${sel !== "" ? `<select id="pb-addafter" style="max-width:170px"><option value="">＋ A seguir…</option>${kindOptions()}</select>` : ""}
+        ${sel !== "" ? `<select id="pb-nwrap" style="max-width:170px"><option value="">⧉ Envolver em…</option>${kindOptions(true)}</select>` : ""}
+      </div>
+      <h3 style="margin-top:4px">${esc(P.label)}</h3>
+      <div class="form">${Object.entries(P.fields).filter(([k]) => node.kind !== "panel" || !["image", "overlay"].includes(k) || node.bg === "image").map(([k, f]) => fieldHtml(f, `${nodePath(sel)}.${k}`, node[k])).join("") || `<p class="muted small">Sem opções.</p>`}</div>
+      <details class="pb-adv"><summary>Aparência e espaçamento do bloco</summary><div class="form">${Object.entries(E.COMMON).filter(([k]) => k !== "backgroundImage" || b.props.background === "image").map(([k, f]) => fieldHtml(f, `props.${k}`, b.props[k])).join("")}</div></details>`;
+    bindForm(box, b);
+    // keep the tree labels in sync while typing
+    $$('[data-path$=".text"],[data-path$=".label"],[data-path$=".alt"]', box).forEach((inp) => inp.addEventListener("input", () => { const s = $(".pb-node.on .s", box); if (s) s.textContent = nodeSummary(node); }));
+    $$(".pb-node", box).forEach((r) => (r.onclick = () => { PB.nodeSel[b.id] = r.dataset.np; drawComposition(box, b); }));
+    const select = (ps) => { PB.nodeSel[b.id] = ps; drawComposition(box, b); changed(); };
+    $$("[data-na]", box).forEach((btn) => (btn.onclick = () => {
+      const a = btn.dataset.na;
+      if (a === "up" && idx > 0) { [siblings[idx - 1], siblings[idx]] = [siblings[idx], siblings[idx - 1]]; return select(parentPs === "" ? String(idx - 1) : `${parentPs}.${idx - 1}`); }
+      if (a === "down" && idx < siblings.length - 1) { [siblings[idx + 1], siblings[idx]] = [siblings[idx], siblings[idx + 1]]; return select(parentPs === "" ? String(idx + 1) : `${parentPs}.${idx + 1}`); }
+      if (a === "dup") { siblings.splice(idx + 1, 0, E.cloneTree(node)); return select(parentPs === "" ? String(idx + 1) : `${parentPs}.${idx + 1}`); }
+      if (a === "rm") { siblings.splice(idx, 1); return select(parentPs); }
+    }));
+    const addIn = $("#pb-addin", box);
+    if (addIn) addIn.onchange = () => { if (!addIn.value) return; node.children.push(E.blankNode(addIn.value)); select(sel === "" ? String(node.children.length - 1) : `${sel}.${node.children.length - 1}`); };
+    const addAfter = $("#pb-addafter", box);
+    if (addAfter) addAfter.onchange = () => { if (!addAfter.value) return; siblings.splice(idx + 1, 0, E.blankNode(addAfter.value)); select(parentPs === "" ? String(idx + 1) : `${parentPs}.${idx + 1}`); };
+    const wrap = $("#pb-nwrap", box);
+    if (wrap) wrap.onchange = () => { if (!wrap.value) return; const w = E.blankNode(wrap.value); w.children = [node]; siblings[idx] = w; select(sel); };
+    $("#pb-savecb", box).onclick = () => saveAsBlockModal(b, box);
+    if (node.kind === "products") drawProducts(b, node, `${b.id}:${node.id}`, `${nodePath(sel)}.limit`);
+  }
+
+  function saveAsBlockModal(b, box) {
+    modal(`<h2>Guardar como bloco</h2><p class="small muted">Fica disponível em “Adicionar bloco › Blocos guardados” e a IA passa a usá-lo quando servir.</p>
+      <div class="form"><label class="f">Nome<input id="cb-name" placeholder="Ex.: Hero com 2 botões" value="${esc(treeTitle(b.props.tree).slice(0, 40))}"/></label>
+      <label class="f">Quando usar (para a equipa e para a IA)<textarea id="cb-desc" rows="3" placeholder="Ex.: topo de campanha com imagem, título e dois CTAs lado a lado"></textarea></label></div>
+      <div class="row" style="margin-top:14px"><span class="grow"></span><button class="btn" data-close>Cancelar</button><button class="btn primary" id="cb-save">Guardar</button></div>`);
+    $("#cb-save").onclick = () => guard(async () => {
+      const rec = await api("/page-builder/custom-blocks", { method: "POST", body: { name: $("#cb-name").value, description: $("#cb-desc").value, tree: b.props.tree, props: b.props, author: author() } });
+      PB.customBlocks = [rec, ...(PB.customBlocks || [])];
+      b.props.template = rec.id;
+      closeModal(); toast(`Guardado como “${rec.name}”`); drawComposition(box, b); changed();
+      const st = $("#pb-blocks"); if (st) drawStructure($("#pb-tab"));
+    }, $("#cb-save"));
   }
 
   // ---------- AI refine (whole element or selected block) with diff → apply

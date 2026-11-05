@@ -4,8 +4,8 @@
 import { db, httpError } from "./store.mjs";
 import { getCatalog, categoryTree, resolveSource } from "./products.mjs";
 import {
-  BLOCKS, PRODUCT_BLOCKS, elementSchema, singleBlockSchema, validateSchema, normalizeElement, normalizeBlock,
-  renderElement, checkElement, productSnapshot, libraryForPrompt, slugify, diffElements,
+  BLOCKS, elementSchema, singleBlockSchema, validateSchema, normalizeElement, normalizeBlock, normalizeNode,
+  renderElement, checkElement, productSnapshot, libraryForPrompt, primitivesForPrompt, slugify, diffElements, productSlots,
 } from "../../public/page-builder/engine.mjs";
 
 export const PBK = {
@@ -14,6 +14,7 @@ export const PBK = {
   versions: (id) => `pb/elements/${id}/versions`,
   job: (id) => `pb/jobs/${id}`,
   log: () => "pb/log",
+  customBlocks: () => "pb/custom-blocks",   // compositions saved as reusable blocks
   settings: () => "pb/settings",
 };
 const MAX_VERSIONS = 10;
@@ -30,19 +31,29 @@ export async function getSettings() {
 }
 
 // ---------------------------------------------------------------------------- products
-// { [blockId]: cards } — manual lists keep missing/oos flags (validation), rules return in-stock matches
+// { [slotKey]: cards } for every product slot (library product blocks + "products" nodes in compositions);
+// manual lists keep missing/oos flags (validation), rules return in-stock matches
 export async function hydrateElement(el) {
   const products = {}, counts = {};
-  const blocks = (el.blocks || []).filter((b) => PRODUCT_BLOCKS.includes(b.type));
-  if (!blocks.length) return { products, counts, generatedAt: null };
+  const slots = productSlots(el);
+  if (!slots.length) return { products, counts, generatedAt: null };
   const cat = await getCatalog(el.market);
-  for (const b of blocks) {
-    const src = b.props.productSource || {};
-    const r = src.mode === "manual" ? resolveSource(cat.items, { mode: "manual", ids: src.ids || [] }, el.market) : resolveSource(cat.items, { ...src, limit: b.props.limit }, el.market);
-    products[b.id] = r.items;
-    counts[b.id] = r.total;
+  for (const sl of slots) {
+    const src = sl.source || {};
+    const r = src.mode === "manual" ? resolveSource(cat.items, { mode: "manual", ids: src.ids || [] }, el.market) : resolveSource(cat.items, { ...src, limit: sl.limit }, el.market);
+    products[sl.key] = r.items;
+    counts[sl.key] = r.total;
   }
   return { products, counts, generatedAt: cat.generatedAt };
+}
+
+// ---------------------------------------------------------------------------- saved blocks (compositions promoted to the library)
+export async function listCustomBlocks() {
+  return (await db.get(PBK.customBlocks())) || [];
+}
+function customBlocksForPrompt(list) {
+  if (!list.length) return "(ainda não há blocos guardados)";
+  return list.slice(0, 15).map((c) => `- template "${c.id}" — ${c.name}: ${c.description || ""}\n  tree: ${JSON.stringify(c.tree, (k, v) => (k === "id" || k === "description" || v === "" ? undefined : v)).slice(0, 2500)}`).join("\n");
 }
 
 // ---------------------------------------------------------------------------- Claude
@@ -73,13 +84,21 @@ function treeForPrompt(tree, maxSub = 25) {
   return tree.children.slice(0, 40).map((c) => `- ${c.name} · ${c.count}${c.children.length ? `: ${c.children.slice(0, maxSub).map((s) => `${s.name} · ${s.count}`).join("; ")}` : ""}`).join("\n");
 }
 
-export function systemPrompt({ market, page, tree, copyOnly = false }) {
+export function systemPrompt({ market, page, tree, copyOnly = false, customBlocks = [] }) {
   const pt = market !== "es";
   return `És o motor do "Page Builder" da hôma (decoração e artigos para casa; lojas e site homastores.com em Portugal e Espanha; páginas montadas no SFCC Page Designer).
 Recebes um pedido em linguagem natural e respondes SEMPRE com a ferramenta indicada, com um elemento feito SÓ de blocos da biblioteca abaixo. Nunca escreves HTML nem CSS (a única exceção é o campo html do text-block, só com <p>, <strong>, <em>, <a href>, <ul>, <ol>, <li>, <br>). O aspeto vem dos blocos (design system hôma do Figma) — não tentes mudar cores, letras ou tamanhos.
 
 ## Biblioteca de blocos (v1)
 ${libraryForPrompt()}
+## Primitivas do design system (para o bloco "composition")
+${primitivesForPrompt()}
+Regras das composições: a raiz (props.tree) é uma primitiva contentora (stack, row ou panel); no máximo 4 níveis e 80 peças; um só texto com level "h2" por bloco (os outros títulos "h3"); usa os estilos de texto pela hierarquia do Figma (Display para títulos grandes, Display 3 para títulos de secção, Body para texto); cores e fundos só dos valores permitidos; botões "onImage" só sobre painéis com imagem ou fundo escuro. Prefere SEMPRE um bloco da biblioteca quando ele serve tal como está.
+
+## Blocos guardados (composições aprovadas pela equipa — reutiliza quando servem)
+${customBlocksForPrompt(customBlocks)}
+Para usar um bloco guardado: devolve um bloco "composition" com props.template = id do bloco guardado e uma cópia da tree, adaptando só textos, imagens, links e produtos.
+
 Props comuns a todos os blocos: background (white|beige|sand|brown|dark|image), backgroundImage, paddingTop/paddingBottom (0|12|16|24|32|36|40|48|80|118), fullBleed, hideOn (""|"mobile"|"desktop"), anchor. Em geral não os definas: cada bloco já tem valores por defeito alinhados com o Figma. Usa background para alternar secções (ex.: cta-section em beige) e só quando ajuda.
 
 ## Composição
@@ -158,7 +177,8 @@ export async function generate(input = {}) {
   const model = copyOnly ? process.env.PAGE_BUILDER_COPY_MODEL || DEFAULT_COPY_MODEL : process.env.PAGE_BUILDER_MODEL || DEFAULT_MODEL;
   const cat = await getCatalog(market);
   const tree = categoryTree(cat.items.filter((p) => p.inStock));
-  const system = systemPrompt({ market, page, tree, copyOnly });
+  const customBlocks = await listCustomBlocks();
+  const system = systemPrompt({ market, page, tree, copyOnly, customBlocks });
 
   let user, tool = ELEMENT_TOOL, target = null;
   if (mode === "new") user = `Pedido:\n${prompt}`;
@@ -317,6 +337,26 @@ export function registerPageBuilder(route) {
     if (!j) throw httpError(404, "Pedido não encontrado");
     if (j.status === "running" && Date.now() - Date.parse(j.startedAt) > 16 * 60 * 1000) return { ...j, input: undefined, status: "error", error: "A geração não terminou (timeout)" };
     return { ...j, input: undefined };
+  });
+
+  route("GET", "/page-builder/custom-blocks", async () => listCustomBlocks());
+  route("POST", "/page-builder/custom-blocks", async ({ body }) => {
+    const name = String(body.name || "").trim().slice(0, 80);
+    if (!name) throw httpError(400, "Dá um nome ao bloco");
+    const tree = normalizeNode(body.tree);
+    if (!tree || !["stack", "row", "panel"].includes(tree.kind)) throw httpError(400, "A composição precisa de uma primitiva contentora na raiz");
+    const list = await listCustomBlocks();
+    const base = `cb-${slugify(name) || "bloco"}`;
+    let id = base, n = 2;
+    while (list.some((c) => c.id === id)) id = `${base}-${n++}`;
+    const keep = ["background", "paddingTop", "paddingBottom", "fullBleed"];
+    const rec = { id, name, description: String(body.description || "").slice(0, 300), tree, props: Object.fromEntries(keep.filter((k) => body.props && k in body.props).map((k) => [k, body.props[k]])), author: String(body.author || ""), createdAt: new Date().toISOString() };
+    await db.set(PBK.customBlocks(), [rec, ...list].slice(0, 60));
+    return rec;
+  });
+  route("DELETE", "/page-builder/custom-blocks/:id", async ({ id }) => {
+    await db.set(PBK.customBlocks(), (await listCustomBlocks()).filter((c) => c.id !== id));
+    return { ok: true };
   });
 
   route("POST", "/page-builder/hydrate", async ({ body }) => hydrateElement(cleanElement(body)));

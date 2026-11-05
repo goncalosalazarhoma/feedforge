@@ -22,31 +22,34 @@
 </style>
 </head>
 <body>
-<header><b>Page Builder · galeria de blocos</b><button data-w="d" class="on">Desktop</button><button data-w="m">Mobile 375px</button><span id="info" style="color:#cfc7bb"></span><a href="/#pagebuilder">← FeedForge</a></header>
+<header><b>Page Builder · galeria de blocos</b><button data-w="d" class="on">Desktop</button><button data-w="m">Mobile 375px</button><button id="cv" title="Mostra cada bloco aberto em primitivas (o que o botão Adaptar faz)">Ver como composição</button><span id="info" style="color:#cfc7bb"></span><a href="/#pagebuilder">← FeedForge</a></header>
 <main id="g"></main>
 <script type="module">
-  import { BLOCKS, BLOCK_TYPES, sampleBlock, normalizeElement, renderElement, previewDocument, SAMPLE_PRODUCTS } from "./engine.mjs";
+  import { BLOCKS, BLOCK_TYPES, sampleBlock, normalizeBlock, normalizeElement, renderElement, previewDocument, productSlots, blockToComposition, SAMPLE_PRODUCTS } from "./engine.mjs";
   const g = document.getElementById("g");
-  let mode = "d";
+  let mode = "d", asComp = false;
   function draw() {
     g.innerHTML = "";
     let total = 0;
     for (const t of BLOCK_TYPES) {
-      const b = sampleBlock(t);
+      let b = sampleBlock(t);
+      if (asComp && t !== "composition") b = blockToComposition(normalizeBlock(b));
       const el = normalizeElement({ id: `gal-${t}`, name: t, market: "pt", blocks: [b] });
-      const products = { [el.blocks[0].id]: SAMPLE_PRODUCTS.concat(SAMPLE_PRODUCTS).slice(0, 8) };
+      const cards = SAMPLE_PRODUCTS.concat(SAMPLE_PRODUCTS).slice(0, 8);
+      const products = Object.fromEntries(productSlots(el).map((sl) => [sl.key, cards]));
       const { html, bytes } = renderElement(el, { products, preview: true });
       total += bytes;
       const s = document.createElement("section");
-      s.innerHTML = `<h2>${BLOCKS[t].label} <code>${t}</code> <code>Figma: ${BLOCKS[t].figma}</code> <code>${(bytes / 1024).toFixed(1)} KB</code></h2><div class="wrap ${mode}"><iframe title="${t}" scrolling="no"></iframe></div>`;
+      s.innerHTML = `<h2>${BLOCKS[t].label} <code>${t}</code> <code>Figma: ${BLOCKS[t].figma}</code> <code>${(bytes / 1024).toFixed(1)} KB</code>${asComp && t !== "composition" ? " <code>como composição</code>" : ""}</h2><div class="wrap ${mode}"><iframe title="${t}" scrolling="no"></iframe></div>`;
       g.appendChild(s);
       const f = s.querySelector("iframe");
       f.srcdoc = previewDocument(html, { title: t });
-      f.onload = () => { const fit = () => (f.style.height = f.contentDocument.documentElement.scrollHeight + "px"); fit(); new f.contentWindow.ResizeObserver(fit).observe(f.contentDocument.body); };
+      f.onload = () => { const fit = () => { const d = f.contentDocument, h = d.querySelector(".hpb"); f.style.height = (h ? h.getBoundingClientRect().height : d.body.scrollHeight) + "px"; }; fit(); new f.contentWindow.ResizeObserver(fit).observe(f.contentDocument.body); };
     }
-    document.getElementById("info").textContent = `${BLOCK_TYPES.length} blocos`;
+    document.getElementById("info").textContent = `${BLOCK_TYPES.length} blocos${asComp ? " · convertidos em primitivas" : ""}`;
   }
   document.querySelectorAll("[data-w]").forEach((b) => (b.onclick = () => { mode = b.dataset.w; document.querySelectorAll("[data-w]").forEach((x) => x.classList.toggle("on", x === b)); draw(); }));
+  document.getElementById("cv").onclick = (e) => { asComp = !asComp; e.target.classList.toggle("on", asComp); draw(); };
   draw();
 </script>
 </body>
