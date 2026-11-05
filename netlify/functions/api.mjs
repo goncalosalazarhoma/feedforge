@@ -10,6 +10,7 @@ import { optimizeBatch, aiInputHash } from "../lib/ai.mjs";
 import { autoMapping, convertRow, TRANSFORMS } from "../lib/gmc.mjs";
 import { serviceAccountEmail } from "../lib/sheets.mjs";
 import { json, authorized, triggerRun } from "../lib/http.mjs";
+import { registerStl } from "../lib/stl.mjs";
 
 const routes = [];
 const route = (method, pattern, handler) => {
@@ -17,6 +18,7 @@ const route = (method, pattern, handler) => {
   const re = new RegExp("^" + pattern.replace(/:(\w+)/g, (_, k) => (keys.push(k), "([^/]+)")) + "$");
   routes.push({ method, re, keys, handler });
 };
+registerStl(route); // Shop the Look: /api/stl/*
 
 // ---------------------------------------------------------------- meta
 route("GET", "/me", async () => ({
