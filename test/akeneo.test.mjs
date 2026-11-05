@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { useMemoryStore, db } from "../netlify/lib/store.mjs";
 import { PK } from "../netlify/lib/pim.mjs";
-import { valuesToColumns, buildSearch } from "../netlify/lib/akeneo-api.mjs";
+import { valuesToColumns, buildSearch, completenessFilter, passesCompleteness } from "../netlify/lib/akeneo-api.mjs";
 
 useMemoryStore();
 Object.assign(process.env, { APP_PASSWORD: "pw", AKENEO_URL: "https://pim.test", AKENEO_CLIENT_ID: "cid", AKENEO_SECRET: "sec", AKENEO_USERNAME: "u", AKENEO_PASSWORD: "p" });
@@ -28,6 +28,18 @@ assert.deepEqual(buildSearch({ families: ["FAM_BEDS"], incompleteOnly: true, sku
   identifier: [{ operator: "IN", value: ["1", "2"] }], family: [{ operator: "IN", value: ["FAM_BEDS"] }],
   completeness: [{ operator: "<", value: 100, scope: "ecommerce", locales: ["pt_PT"] }],
 });
+// ---- completion rate filter
+assert.deepEqual(buildSearch({ completeness: { op: "between", value: 90, value2: 50, locales: ["pt_PT", "es_ES"], all: true } }, { channel: "ecommerce", locale: "pt_PT" }).completeness, [
+  { operator: "GREATER OR EQUALS THAN ON ALL LOCALES", value: 50, scope: "ecommerce", locales: ["pt_PT", "es_ES"] },
+  { operator: "LOWER OR EQUALS THAN ON ALL LOCALES", value: 90, scope: "ecommerce", locales: ["pt_PT", "es_ES"] },
+]);
+assert.deepEqual(buildSearch({ completeness: { op: "gte", value: 80, locales: ["es_ES"] } }, { channel: "ecommerce", locale: "pt_PT" }).completeness, [{ operator: ">=", value: 80, scope: "ecommerce", locales: ["es_ES"] }]);
+const row = { "completeness_ratio-pt_PT-ecommerce": "80", "completeness_ratio-es_ES-ecommerce": "40" };
+const cf = (c) => completenessFilter({ completeness: c }, "pt_PT");
+assert.equal(passesCompleteness(row, cf({ op: "lt", value: 50, locales: ["pt_PT", "es_ES"], all: false }), "ecommerce"), true, "any locale");
+assert.equal(passesCompleteness(row, cf({ op: "lt", value: 50, locales: ["pt_PT", "es_ES"], all: true }), "ecommerce"), false, "all locales");
+assert.equal(passesCompleteness(row, cf({ op: "between", value: 70, value2: 90, locales: ["pt_PT"] }), "ecommerce"), true);
+assert.equal(passesCompleteness(row, completenessFilter({ incompleteOnly: true }, "pt_PT"), "ecommerce"), true, "old checkbox still works");
 console.log("Conversão OK");
 
 // ---- mocked Akeneo API: token, 2 pages of products, sub-model + root model
@@ -73,6 +85,13 @@ assert.equal(meta.status, "ready"); assert.equal(meta.count, 3); assert.equal(me
 r = await call("GET", `/jobs/${id}/products/468819`);
 assert.match(r.json.fields.find((f) => f.col === "ATT_PLP_NAME-pt_PT").lock.msg, /FAM0000001748/);
 console.log("Importação OK");
+
+// completion rate applied to the import: products are at 80% PT → "≥ 90% in pt_PT" keeps none
+r = await call("POST", "/akeneo/import", { name: "≥90", completeness: { op: "gte", value: 90, locales: ["pt_PT"] } });
+const imp2 = await importFromAkeneo(r.json.id);
+assert.equal(imp2.done, 0); assert.equal(imp2.skipped, 3);
+assert.deepEqual(JSON.parse(new URL(calls.filter((u) => u.includes("/api/rest/v1/products?") && u.includes("search=")).pop()).searchParams.get("search")).completeness, [{ operator: ">=", value: 90, scope: "ecommerce", locales: ["pt_PT"] }]);
+console.log("Filtro de completude OK");
 
 // ---- missing env → clear error, no call
 delete process.env.AKENEO_PASSWORD;

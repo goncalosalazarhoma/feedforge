@@ -73,8 +73,14 @@
             <label class="f">Atualizados desde <input id="ak-since" type="date" /></label>
           </div>
           <label class="f">SKUs (opcional, um por linha ou separados por vírgula) <textarea id="ak-skus" rows="2"></textarea></label>
+          <div class="f"><span>Completude (${esc(P.cfg?.channel || "ecommerce")})</span>
+            <div class="row">
+              <select id="ak-comp-op"><option value="">qualquer</option><option value="lt" selected>abaixo de</option><option value="lte">até</option><option value="gte">a partir de</option><option value="gt">acima de</option><option value="eq">igual a</option><option value="between">entre</option></select>
+              <input id="ak-comp-v" type="number" min="0" max="100" value="100" style="width:80px" /><span id="ak-comp-and" hidden>e</span><input id="ak-comp-v2" type="number" min="0" max="100" value="100" style="width:80px" hidden /><span>%</span>
+              <select id="ak-comp-loc">${(P.cfg?.targetLocales || ["pt_PT", "es_ES"]).map((l) => `<option value="${esc(l)}">em ${esc(l)}</option>`).join("")}<option value="any">em pelo menos uma língua</option><option value="all">em todas as línguas</option></select>
+            </div>
+            <span class="muted small">Ex.: "abaixo de 100% em pt_PT" (incompletos), "entre 50 e 90% em todas as línguas".</span></div>
           <div class="row">
-            <label class="chk"><input type="checkbox" id="ak-incomplete" checked /> Só incompletos (completude ${esc(P.cfg?.channel || "ecommerce")} · ${esc(P.cfg?.sourceLocale || "pt_PT")} &lt; 100%)</label>
             <label class="chk"><input type="checkbox" id="ak-enabled" /> Só ativos</label>
             <label class="chk"><input type="checkbox" id="ak-models" checked /> Incluir modelos (variantes)</label>
           </div>
@@ -97,11 +103,13 @@
     $("#pim-file").onchange = (e) => upload(e.target.files[0]);
     $("#ak-test").onclick = (e) => guard(async () => { const r = await papi("/akeneo/test", { method: "POST" }); $("#ak-status").textContent = `✓ Ligado a ${r.url} · canais: ${r.channels.join(", ")}${r.families != null ? ` · ${r.families} famílias` : ""}`; }, e.target);
     $("#ak-import").onclick = (e) => guard(async () => {
-      const body = { name: $("#ak-name").value.trim(), limit: Number($("#ak-limit").value) || 1000, families: [...$("#ak-fam").selectedOptions].map((o) => o.value), categories: $("#ak-cats").value, updatedSince: $("#ak-since").value, skus: $("#ak-skus").value, incompleteOnly: $("#ak-incomplete").checked, enabledOnly: $("#ak-enabled").checked, includeModels: $("#ak-models").checked };
+      const body = { name: $("#ak-name").value.trim(), limit: Number($("#ak-limit").value) || 1000, families: [...$("#ak-fam").selectedOptions].map((o) => o.value), categories: $("#ak-cats").value, updatedSince: $("#ak-since").value, skus: $("#ak-skus").value, completeness: (() => { const op = $("#ak-comp-op").value; if (!op) return null; const loc = $("#ak-comp-loc").value, langs = P.cfg?.targetLocales || ["pt_PT", "es_ES"]; return { op, value: Number($("#ak-comp-v").value), value2: Number($("#ak-comp-v2").value), locales: ["any", "all"].includes(loc) ? langs : [loc], all: loc === "all" }; })(), enabledOnly: $("#ak-enabled").checked, includeModels: $("#ak-models").checked };
       await papi("/akeneo/import", { method: "POST", body });
       toast("Importação iniciada — aparece na lista em baixo");
       drawFiles(box);
     }, e.target);
+    const compUi = () => { const op = $("#ak-comp-op").value; $("#ak-comp-v").hidden = !op; $("#ak-comp-loc").hidden = !op; $("#ak-comp-v2").hidden = $("#ak-comp-and").hidden = op !== "between"; };
+    $("#ak-comp-op").onchange = compUi; compUi();
     clearTimeout(P.filesPoll);
     if (importing) P.filesPoll = setTimeout(() => { if (S.view === "pim" && !P.jobId && P.tab === "files") drawFiles(box); }, 4000);
     $$("tr[data-job]", box).forEach((tr) => (tr.onclick = (e) => { if (e.target.dataset.del) return; const jb = jobs.find((x) => x.id === tr.dataset.job); if (jb?.status === "importing") return toast("Ainda a importar do Akeneo…"); P.jobId = tr.dataset.job; P.list = { q: "", filter: "", flag: "", page: 1 }; drawJob(box); }));

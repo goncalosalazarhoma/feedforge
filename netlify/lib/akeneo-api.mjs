@@ -105,6 +105,30 @@ export function modelToRow(m, opts) {
   };
 }
 
+// Completion rate filter: { op: lt|lte|gt|gte|eq|between, value, value2, locales: [...], all: bool }
+// all = every chosen locale must match; otherwise at least one. "incompleteOnly" (old form) = < 100 in the source locale.
+export function completenessFilter(f = {}, locale) {
+  if (f.completeness?.op) return { locales: f.completeness.locales?.length ? f.completeness.locales : [locale], all: !!f.completeness.all, op: f.completeness.op, value: Number(f.completeness.value), value2: Number(f.completeness.value2) };
+  if (f.incompleteOnly) return { locales: [locale], all: false, op: "lt", value: 100 };
+  return null;
+}
+const OPS = { lt: ["<", "LOWER THAN ON ALL LOCALES"], lte: ["<=", "LOWER OR EQUALS THAN ON ALL LOCALES"], gt: [">", "GREATER THAN ON ALL LOCALES"], gte: [">=", "GREATER OR EQUALS THAN ON ALL LOCALES"], eq: ["=", "="] };
+const TEST = { lt: (x, v) => x < v, lte: (x, v) => x <= v, gt: (x, v) => x > v, gte: (x, v) => x >= v, eq: (x, v) => x === v };
+
+function completenessSearch(c, channel) {
+  const one = (op, value) => ({ operator: OPS[op][c.all ? 1 : 0], value, scope: channel, locales: c.locales });
+  return c.op === "between" ? [one("gte", Math.min(c.value, c.value2)), one("lte", Math.max(c.value, c.value2))] : [one(c.op, c.value)];
+}
+
+// same rule applied to the imported row (completeness_ratio-<locale>-<channel>), so the result never depends on how Akeneo combines locales
+export function passesCompleteness(row, c, channel) {
+  if (!c) return true;
+  const ok = (x) => (c.op === "between" ? x >= Math.min(c.value, c.value2) && x <= Math.max(c.value, c.value2) : TEST[c.op](x, c.value));
+  const vals = c.locales.map((l) => Number(row[`completeness_ratio-${l}-${channel}`])).filter((x) => Number.isFinite(x));
+  if (!vals.length) return true; // Akeneo did not send it: trust the search
+  return c.all ? vals.every(ok) : vals.some(ok);
+}
+
 // Akeneo search filter from the import form
 export function buildSearch(f = {}, { channel, locale }) {
   const s = {};
@@ -112,7 +136,8 @@ export function buildSearch(f = {}, { channel, locale }) {
   if (list(f.skus).length) s.identifier = [{ operator: "IN", value: list(f.skus).slice(0, 1000) }];
   if (list(f.families).length) s.family = [{ operator: "IN", value: list(f.families) }];
   if (list(f.categories).length) s.categories = [{ operator: "IN", value: list(f.categories) }];
-  if (f.incompleteOnly) s.completeness = [{ operator: "<", value: 100, scope: channel, locales: [locale] }];
+  const c = completenessFilter(f, locale);
+  if (c) s.completeness = completenessSearch(c, channel);
   if (f.updatedSince) s.updated = [{ operator: ">", value: `${f.updatedSince} 00:00:00` }];
   if (f.enabledOnly) s.enabled = [{ operator: "=", value: true }];
   return s;
@@ -124,14 +149,17 @@ export async function fetchFromAkeneo(filters, { channel = "ecommerce", locales 
   const rows = [];
   let next = "/api/rest/v1/products";
   let params = { search: buildSearch(filters, { channel, locale: locales[0] }), scope: channel, locales: locales.join(","), with_completenesses: "true", pagination_type: "search_after", limit: 100 };
-  let truncated = false;
+  let truncated = false, skipped = 0;
+  const comp = completenessFilter(filters, locales[0]);
   while (next) {
     if (Date.now() > deadline) { truncated = true; break; }
     const page = await akeneoGet(next, params);
     params = null; // the next link already carries every parameter
     for (const p of page?._embedded?.items || []) {
       if (rows.length >= limit) { truncated = true; break; }
-      rows.push(productToRow(p, opts));
+      const row = productToRow(p, opts);
+      if (!passesCompleteness(row, comp, channel)) { skipped++; continue; }
+      rows.push(row);
     }
     if (rows.length >= limit) { truncated = !!page?._links?.next || truncated; break; }
     next = page?._links?.next?.href || null;
@@ -152,7 +180,7 @@ export async function fetchFromAkeneo(filters, { channel = "ecommerce", locales 
       }
     }
   }
-  return { rows, products: rows.length - models, models, truncated };
+  return { rows, products: rows.length - models, models, truncated, skipped };
 }
 
 // export-like header order: identity columns first, then attributes alphabetically
