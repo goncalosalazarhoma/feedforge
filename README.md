@@ -117,7 +117,7 @@ Ficheiros: `netlify/lib/pim.mjs`, `netlify/lib/akeneo-dictionary.mjs`, `netlify/
 - Export: ficheiro único com `entity_type/code/sku/parent` ou "Produtos + modelos separados" (dois ficheiros: `sku` e `code`).
 
 ### PIM — importar diretamente do Akeneo (API)
-Em vez de exportar um XLSX, o separador **Ficheiros** do PIM optimizer tem **Importar diretamente do Akeneo**: filtros por famílias, categorias, SKUs, "atualizados desde", só incompletos (completude `ecommerce`/`pt_PT` < 100%) e só ativos, com um máximo de produtos (até 5000). Os produtos (e os modelos-pai, para as variantes) vêm pela API REST e ficam com as mesmas colunas de um export (`ATT-locale-canal`, `-unit`, `-EUR`, `completeness_ratio-…`), por isso diagnóstico, AI e export XLSX funcionam como num ficheiro carregado. Só leitura: nada é escrito no Akeneo.
+Em vez de exportar um XLSX, o separador **Ficheiros** do PIM optimizer tem **Importar diretamente do Akeneo**: filtros por famílias, categorias, SKUs, "atualizados desde", completude (abaixo de / até / a partir de / acima de / igual a / entre X e Y %, numa língua, em pelo menos uma ou em todas — por omissão "abaixo de 100% em pt_PT") e só ativos, com um máximo de produtos (até 5000). Os produtos (e os modelos-pai, para as variantes) vêm pela API REST e ficam com as mesmas colunas de um export (`ATT-locale-canal`, `-unit`, `-EUR`, `completeness_ratio-…`), por isso diagnóstico, AI e export XLSX funcionam como num ficheiro carregado. Só leitura: nada é escrito no Akeneo.
 
 Variáveis de ambiente (Netlify → Site configuration → Environment variables), a partir de uma *Connection* do Akeneo (Connect → Connection settings):
 | Variável | Valor |
