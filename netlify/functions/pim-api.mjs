@@ -4,6 +4,7 @@ import { json, authorized } from "../lib/http.mjs";
 import { PK, getPimConfig, defaultPimConfig, parseColumn, columnFor, isEditable, diagnose, productFacts, dimensionsText, refreshMeta, getDictionary, fieldsFor, deterministicFixes, labelChanges, categoryFixes, categoryContext } from "../lib/pim.mjs";
 import { humanCat, splitCats, checkCategories } from "../lib/categories.mjs";
 import { buildHierarchy, isModelRow, normaliseRows, canEdit, effectiveFields } from "../lib/pim.mjs";
+import { akeneoBase, akeneoMissing, akeneoGet } from "../lib/akeneo-api.mjs";
 
 const routes = [];
 const route = (method, pattern, handler) => {
@@ -64,6 +65,32 @@ route("POST", "/jobs", async ({ body }) => {
   return { id };
 });
 
+// ------------------------------------------------------------------ direct import from the Akeneo API
+route("GET", "/akeneo/status", async () => ({ url: akeneoBase(), missing: akeneoMissing() }));
+
+route("POST", "/akeneo/test", async () => {
+  if (akeneoMissing().length) throw httpError(400, `Faltam variáveis de ambiente no Netlify: ${akeneoMissing().join(", ")}`);
+  const ch = await akeneoGet("/api/rest/v1/channels", { limit: 10 });
+  const fam = await akeneoGet("/api/rest/v1/families", { limit: 1, with_count: "true" });
+  return { ok: true, url: akeneoBase(), channels: (ch?._embedded?.items || []).map((c) => c.code), families: fam?.items_count ?? null };
+});
+
+route("POST", "/akeneo/import", async ({ body, req }) => {
+  if (akeneoMissing().length) throw httpError(400, `Faltam variáveis de ambiente no Netlify: ${akeneoMissing().join(", ")}`);
+  const id = uid();
+  const filters = { families: body.families || [], categories: body.categories || "", skus: body.skus || "", incompleteOnly: !!body.incompleteOnly, enabledOnly: !!body.enabledOnly, updatedSince: body.updatedSince || "", includeModels: body.includeModels !== false, limit: Number(body.limit) || 1000 };
+  await db.set(PK.rows(id), { headers: ["sku"], rows: [] });
+  await db.set(PK.results(id), {});
+  await db.set(PK.job(id), { id, name: body.name || `Akeneo ${new Date().toISOString().slice(0, 10)}`, createdAt: new Date().toISOString(), status: "importing", source: "akeneo", count: 0, import: { phase: "a iniciar", done: 0, filters } });
+  const ids = (await db.get(PK.jobs())) || [];
+  await db.set(PK.jobs(), [id, ...ids].slice(0, 50));
+  const res = await fetch(`${new URL(req.url).origin}/.netlify/functions/pim-akeneo-background`, {
+    method: "POST", headers: { authorization: `Bearer ${process.env.APP_PASSWORD}`, "content-type": "application/json" }, body: JSON.stringify({ id }),
+  });
+  if (res.status !== 202 && !res.ok) throw httpError(500, `Não foi possível iniciar a importação (${res.status})`);
+  return { id };
+});
+
 route("POST", "/jobs/:id/rows", async ({ id, body }) => {
   const data = await db.get(PK.rows(id));
   if (!data) throw httpError(404, "Ficheiro não encontrado");
@@ -77,7 +104,7 @@ route("POST", "/jobs/:id/rows", async ({ id, body }) => {
 });
 
 // apply deterministic fixes + label rules to a job (never overwrites manual/accepted AI work)
-async function applyAuto(id) {
+export async function applyAuto(id) {
   const [cfg, dict, data] = await Promise.all([getPimConfig(), getDictionary(), db.get(PK.rows(id))]);
   const results = (await db.get(PK.results(id))) || {};
   let fixes = 0, labels = 0;

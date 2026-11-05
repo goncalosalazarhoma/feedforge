@@ -116,6 +116,20 @@ Ficheiros: `netlify/lib/pim.mjs`, `netlify/lib/akeneo-dictionary.mjs`, `netlify/
 - AI, deduções e labels só propõem no nível dono; os produtos mostram o campo como "herdado do modelo X" e os problemas como "corrigir no modelo X". A completude estimada dos produtos conta as alterações aceites nos modelos.
 - Export: ficheiro único com `entity_type/code/sku/parent` ou "Produtos + modelos separados" (dois ficheiros: `sku` e `code`).
 
+### PIM — importar diretamente do Akeneo (API)
+Em vez de exportar um XLSX, o separador **Ficheiros** do PIM optimizer tem **Importar diretamente do Akeneo**: filtros por famílias, categorias, SKUs, "atualizados desde", só incompletos (completude `ecommerce`/`pt_PT` < 100%) e só ativos, com um máximo de produtos (até 5000). Os produtos (e os modelos-pai, para as variantes) vêm pela API REST e ficam com as mesmas colunas de um export (`ATT-locale-canal`, `-unit`, `-EUR`, `completeness_ratio-…`), por isso diagnóstico, AI e export XLSX funcionam como num ficheiro carregado. Só leitura: nada é escrito no Akeneo.
+
+Variáveis de ambiente (Netlify → Site configuration → Environment variables), a partir de uma *Connection* do Akeneo (Connect → Connection settings):
+| Variável | Valor |
+|---|---|
+| `AKENEO_URL` *(opcional)* | por omissão `https://homa.cloud.akeneo.com` |
+| `AKENEO_CLIENT_ID` | Client ID da connection |
+| `AKENEO_SECRET` | Secret da connection |
+| `AKENEO_USERNAME` | utilizador da connection (ex.: `feedforge_0756`) |
+| `AKENEO_PASSWORD` | password do utilizador da connection |
+
+As credenciais nunca vão para o código nem para o browser; o token OAuth fica guardado do lado do servidor (Netlify Blobs) e é renovado automaticamente. Código: `netlify/lib/akeneo-api.mjs`, `netlify/functions/pim-akeneo-background.mjs`; teste: `node test/akeneo.test.mjs`.
+
 ## Feed em XML
 Além do Sheets (CSV), cada feed tem links XML públicos (Dashboard → Links XML), gerados a partir do output do último run:
 `/xml/<feed>/<token>/meta.xml` e `/xml/<feed>/<token>/gmc.xml` (acrescenta `.gz` para a versão comprimida).
