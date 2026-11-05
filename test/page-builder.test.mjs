@@ -34,7 +34,7 @@ for (const t of E.BLOCK_TYPES) {
   const { id, ...forSchema } = b;
   assert.deepEqual(E.validateSchema(E.blockSchema(t), forSchema), [], `sample ${t} matches its schema`);
   const el = E.normalizeElement({ id: `snap-${t}`, name: t, market: "pt", blocks: [b] });
-  const { html } = E.renderElement(el, { products: { [el.blocks[0].id]: sampleProducts } });
+  const { html } = E.renderElement(el, { products: Object.fromEntries(E.productSlots(el).map((sl) => [sl.key, sampleProducts])) });
   assert.ok(html.includes(`data-hpb-block="${t}"`), `${t} rendered`);
   assert.ok(/@media \(max-width:767px\)/.test(html), `${t} has a mobile rule`);
   snaps[t] = html;
@@ -123,6 +123,63 @@ assert.equal(norm.blocks[0].props.textPosition, "left");
 assert.ok(norm.notes[0].includes("video"));
 console.log("Schema OK");
 
+// ------------------------------------------------------------------ 4b. compositions (design-system primitives)
+// every library block opens as a composition that renders, passes the checks and validates against the schema
+for (const t of E.BLOCK_TYPES.filter((x) => x !== "composition")) {
+  const b = E.normalizeBlock(E.sampleBlock(t));
+  const c = E.blockToComposition(b);
+  assert.equal(c.type, "composition", `${t} converts`);
+  assert.equal(c.id, b.id, `${t}: block id kept`);
+  for (const k of Object.keys(E.COMMON)) assert.deepEqual(c.props[k], b.props[k], `${t}: common prop ${k} kept`);
+  const { id, ...forSchema } = c;
+  const ids = []; E.walkNodes(c.props.tree, (n) => ids.push(n.id));
+  assert.equal(new Set(ids).size, ids.length, `${t}: node ids unique`);
+  const stripIds = JSON.parse(JSON.stringify(forSchema, (k, v) => (k === "id" ? undefined : v)));
+  assert.deepEqual(E.validateSchema(E.blockSchema("composition"), stripIds), [], `${t} composition matches the schema`);
+  const el = E.normalizeElement({ id: `cv-${t}`, market: "pt", blocks: [c] });
+  const prods = Object.fromEntries(E.productSlots(el).map((sl) => [sl.key, sampleProducts]));
+  const { html } = E.renderElement(el, { products: prods });
+  assert.ok(html.includes('data-hpb-block="composition"'), `${t} composition rendered`);
+  const ck = E.checkElement(el, prods, html);
+  assert.deepEqual(ck.errors, [], `${t} composition passes the checks`);
+  assert.ok(ck.warnings.some((w) => /composição nova/.test(w)), `${t}: flagged as new composition`);
+}
+// product slots: library blocks keep the block id, product nodes get blockId:nodeId
+const mixed = E.normalizeElement({ id: "mx", market: "pt", blocks: [
+  { id: "g1", type: "product-grid", props: { productSource: { mode: "manual", ids: ["1"] } } },
+  { id: "c1", type: "composition", props: { tree: { kind: "row", cols: 2, children: [{ kind: "products", id: "pa", limit: 2, productSource: { mode: "manual", ids: ["2", "3"] } }, { kind: "products", id: "pb", limit: 3, layout: "scroll", productSource: { mode: "rule", category: "Decoração" } }] } } },
+] });
+assert.deepEqual(E.productSlots(mixed).map((x) => [x.key, x.limit]), [["g1", 8], ["c1:pa", 2], ["c1:pb", 3]], "product slots");
+assert.equal(E.productSlots(mixed)[2].source.limit, 3, "rule limit follows the node limit");
+// limits: depth, node count, children, one h2 per block, unknown kinds dropped
+let deep = { kind: "text", text: "fundo" };
+for (let i = 0; i < 8; i++) deep = { kind: "stack", children: [deep] };
+let depth = 0; E.walkNodes(E.normalizeNode(deep), (n, path) => (depth = Math.max(depth, path.length)));
+assert.ok(depth <= 4, `max depth (got ${depth})`);
+const wide = E.normalizeNode({ kind: "stack", children: Array.from({ length: 40 }, () => ({ kind: "row", children: Array.from({ length: 12 }, () => ({ kind: "spacer" })) })) });
+let count = 0; E.walkNodes(wide, () => count++);
+assert.ok(count <= 80 && wide.children.length <= 12, `node caps (got ${count})`);
+const hs = E.normalizeBlock({ type: "composition", props: { tree: { kind: "stack", children: [{ kind: "text", text: "A", level: "h2" }, { kind: "text", text: "B", level: "h2" }, { kind: "video", src: "x" }] } } });
+assert.deepEqual(hs.props.tree.children.map((n) => n.level), ["h2", "h3"], "extra h2 demoted, unknown kind dropped");
+// schema: $ref recursion is validated, bad kinds / enums caught
+const cerrs = E.validateSchema(E.singleBlockSchema(), { block: { type: "composition", props: { tree: { kind: "stack", children: [{ kind: "panel", bg: "pink", children: [] }, { kind: "marquee" }] } } } });
+assert.ok(cerrs.length >= 2 && cerrs.some((e) => /bg/.test(e)) && cerrs.some((e) => /marquee|kind/.test(e)), `nested schema errors: ${cerrs.join(" | ")}`);
+assert.ok(E.elementSchema().$defs.node.anyOf.length === E.PRIM_KINDS.length, "element schema carries the node $defs");
+// malicious input inside a composition
+const evilC = E.normalizeElement({ id: "evc", market: "pt", blocks: [{ type: "composition", props: { tree: { kind: "panel", bg: "image", image: { src: "http://evil.test/a.jpg", alt: "" }, link: { url: "javascript:alert(1)" }, children: [
+  { kind: "text", text: "</style><script>alert(2)</script>", level: "h2" },
+  { kind: "richtext", html: '<p onclick="x()">ok</p><img src=x onerror=alert(3)><a href="https://evil.test/">b</a>' },
+  { kind: "button", label: '"><img src=x onerror=alert(4)>', url: { url: "https://evil.test/phish" } },
+  { kind: "image", image: { src: "javascript:alert(5)", alt: "x" } },
+] } } }] });
+const evc = E.renderElement(evilC, {});
+assert.ok(!/<script/i.test(evc.html) && !/javascript:/i.test(evc.html) && !/evil\.test/.test(evc.html), "composition: no script / javascript: / foreign hosts");
+assert.ok(tagsOf(evc.html).every((t) => !/\son[a-z]+\s*=/i.test(t.replace(/"[^"]*"/g, "\"\""))), "composition: no event handlers");
+assert.ok(!/<a [^>]*>[^<]*<a /.test(evc.html), "no nested anchors (panel link is an overlay)");
+const evcCheck = E.checkElement(evilC, {}, evc.html);
+assert.equal(evcCheck.ok, false, "composition: unsafe content blocks export");
+console.log("Composições OK");
+
 // ------------------------------------------------------------------ 5. generation (mocked Claude: invalid first answer → retry → valid)
 const calls = [];
 const exampleAnswer = {
@@ -142,6 +199,7 @@ globalThis.fetch = async (url, o) => {
   let input;
   if (body.tools[0].name === "emit_block") input = { block: { type: "section-heading", props: { title: "Título mais curto", eyebrow: "Seleção" } } };
   else if (calls.length === 1) input = { name: "x", blocks: [{ type: "image-tiles", props: { columns: 9 }, items: [] }] }; // invalid
+  else if (/COMPOSICAO/.test(JSON.stringify(body.messages))) input = { name: "Nova", blocks: [{ type: "composition", props: { tree: E.SAMPLE_TREE } }] };
   else if (/Inexistente/.test(JSON.stringify(body.messages))) input = { ...exampleAnswer, blocks: [{ ...exampleAnswer.blocks[3], props: { ...exampleAnswer.blocks[3].props, productSource: { mode: "rule", category: "Inexistente" } } }] };
   else input = exampleAnswer;
   return new Response(JSON.stringify({ content: [{ type: "tool_use", id: `tu_${calls.length}`, name: body.tools[0].name, input }], usage: { input_tokens: 9000, output_tokens: 1200 }, stop_reason: "tool_use" }));
@@ -168,6 +226,13 @@ calls.length = 1; // skip the invalid-first branch
 const badCat = await generate({ prompt: "8 produtos da categoria Inexistente", market: "pt" });
 assert.equal(badCat.element.blocks[0].props.productSource.category, "", "category outside the feed tree is cleared");
 assert.ok(badCat.notes.some((n) => n.includes("Inexistente")));
+// the model may answer with a composition (new element) → normalised, rendered, flagged
+calls.length = 1;
+const compGen = await generate({ prompt: "COMPOSICAO hero com dois botões e 3 cartões glass", market: "pt" });
+assert.equal(compGen.element.blocks[0].type, "composition");
+assert.ok(calls.at(-1).system.includes("Primitivas do design system"), "primitives in the prompt");
+assert.ok(calls.at(-1).tools[0].input_schema.$defs?.node, "tool schema carries $defs");
+assert.ok(E.checkElement(compGen.element, {}, "").warnings.some((w) => /composição nova/.test(w)));
 const log = await db.get(PBK.log());
 assert.ok(log.length >= 3 && log[0].tokensIn > 0 && log[0].model && log[0].ms >= 0, "generations logged");
 console.log("Geração OK");
@@ -233,6 +298,29 @@ let job; for (let i = 0; i < 50; i++) { job = (await call("GET", `/page-builder/
 assert.equal(job.status, "done", job.error); assert.equal(job.result.element.blocks.length, 4);
 const st = (await call("PUT", "/page-builder/settings", { caps: { js: false }, capabilityTest: { style: true, inline: true, media: true, scroll: true, js: false, dataAttrs: true } })).json;
 assert.equal(st.caps.js, false);
+// saved blocks: composition → library, visible to the AI, insertable
+assert.equal((await call("POST", "/page-builder/custom-blocks", { name: "", tree: E.SAMPLE_TREE })).status, 400, "name required");
+assert.equal((await call("POST", "/page-builder/custom-blocks", { name: "x", tree: { kind: "text", text: "a" } })).status, 400, "container root required");
+const cb = (await call("POST", "/page-builder/custom-blocks", { name: "Hero com dois botões", description: "hero + 2 CTAs", tree: E.SAMPLE_TREE, props: { background: "beige", evil: 1 }, author: "Gonçalo" })).json;
+assert.equal(cb.id, "cb-hero-com-dois-botoes"); assert.deepEqual(cb.props, { background: "beige" }, "only common props kept");
+assert.equal((await call("POST", "/page-builder/custom-blocks", { name: "Hero com dois botões", tree: E.SAMPLE_TREE })).json.id, "cb-hero-com-dois-botoes-2", "unique id");
+assert.equal((await call("GET", "/page-builder/custom-blocks")).json.length, 2);
+calls.length = 1;
+await generate({ prompt: "COMPOSICAO", market: "pt" });
+assert.ok(calls.at(-1).system.includes("cb-hero-com-dois-botoes") && calls.at(-1).system.includes("hero + 2 CTAs"), "saved blocks in the prompt");
+const inserted = E.normalizeBlock({ type: "composition", props: { tree: E.cloneTree(cb.tree), template: cb.id } });
+assert.equal(inserted.props.template, cb.id);
+const cbIds = []; E.walkNodes(cb.tree, (n) => cbIds.push(n.id)); const inIds = []; E.walkNodes(inserted.props.tree, (n) => inIds.push(n.id));
+assert.ok(inIds.every((i) => !cbIds.includes(i)), "inserted copy gets fresh node ids");
+assert.ok(!E.checkElement(E.normalizeElement({ id: "t", market: "pt", blocks: [inserted] }), {}, "").warnings.some((w) => /composição nova/.test(w)), "saved block not flagged as new");
+await call("DELETE", `/page-builder/custom-blocks/${cb.id}`);
+assert.equal((await call("GET", "/page-builder/custom-blocks")).json.length, 1);
+// export hydrates products inside compositions
+const compEl = { id: "pb-comp", name: "Comp", market: "pt", blocks: [{ id: "cc", type: "composition", props: { tree: { kind: "stack", children: [{ kind: "text", text: "Favoritos", level: "h2", style: "display3" }, { kind: "products", id: "pp", limit: 3, productSource: { mode: "manual", ids: ["474166", "474182", "474179"] } }] } } }] };
+const cexp = (await call("POST", "/page-builder/export", { element: compEl, author: "Gonçalo" })).json;
+assert.equal(cexp.check.ok, true, cexp.check.errors.join("; "));
+assert.ok(cexp.html.includes("CYRIELLE") && cexp.html.includes("MONA"), "composition products hydrated in the export");
+assert.deepEqual(Object.keys(cexp.productSnapshot).sort(), ["474166", "474179", "474182"]);
 console.log("API OK");
 
 // ------------------------------------------------------------------ 7. export-test.html = renderer output for the example (plain HTML page)
