@@ -11,6 +11,8 @@ import { autoMapping, convertRow, TRANSFORMS } from "../lib/gmc.mjs";
 import { serviceAccountEmail } from "../lib/sheets.mjs";
 import { json, authorized, triggerRun } from "../lib/http.mjs";
 import { registerStl } from "../lib/stl.mjs";
+import { registerProducts } from "../lib/products.mjs";
+import { registerPageBuilder } from "../lib/page-builder.mjs";
 
 const routes = [];
 const route = (method, pattern, handler) => {
@@ -18,7 +20,9 @@ const route = (method, pattern, handler) => {
   const re = new RegExp("^" + pattern.replace(/:(\w+)/g, (_, k) => (keys.push(k), "([^/]+)")) + "$");
   routes.push({ method, re, keys, handler });
 };
+registerProducts(route); // shared feed product search: /api/products*
 registerStl(route); // Shop the Look: /api/stl/*
+registerPageBuilder(route); // Page Builder: /api/page-builder/*
 
 // ---------------------------------------------------------------- meta
 route("GET", "/me", async () => ({

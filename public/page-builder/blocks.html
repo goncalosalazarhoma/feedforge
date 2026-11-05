@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page Builder · Galeria de blocos</title>
+<style>
+  body{margin:0;font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:#f6f3ee;color:#1f1d1a}
+  header{position:sticky;top:0;z-index:2;display:flex;gap:12px;align-items:center;padding:12px 20px;background:#1f1d1a;color:#efe9df}
+  header b{font-size:15px}
+  header button{border:1px solid #3a3631;background:#2c2925;color:#efe9df;border-radius:8px;padding:6px 12px;cursor:pointer}
+  header button.on{background:#efe9df;color:#1f1d1a}
+  header a{color:#cfc7bb;margin-left:auto}
+  main{padding:20px;display:flex;flex-direction:column;gap:24px}
+  section{background:#fff;border:1px solid #e7e1d8;border-radius:10px;overflow:hidden}
+  section h2{margin:0;padding:10px 14px;font-size:13px;border-bottom:1px solid #e7e1d8;display:flex;gap:8px;align-items:baseline}
+  section h2 code{font-size:12px;color:#7a746b}
+  .wrap{display:flex;justify-content:center;background:#fff}
+  .wrap.m{background:#f1ece4;padding:12px 0}
+  iframe{border:0;width:100%;display:block;background:#fff}
+  .wrap.m iframe{width:375px;box-shadow:0 0 0 1px #e7e1d8}
+</style>
+</head>
+<body>
+<header><b>Page Builder · galeria de blocos</b><button data-w="d" class="on">Desktop</button><button data-w="m">Mobile 375px</button><span id="info" style="color:#cfc7bb"></span><a href="/#pagebuilder">← FeedForge</a></header>
+<main id="g"></main>
+<script type="module">
+  import { BLOCKS, BLOCK_TYPES, sampleBlock, normalizeElement, renderElement, previewDocument, SAMPLE_PRODUCTS } from "./engine.mjs";
+  const g = document.getElementById("g");
+  let mode = "d";
+  function draw() {
+    g.innerHTML = "";
+    let total = 0;
+    for (const t of BLOCK_TYPES) {
+      const b = sampleBlock(t);
+      const el = normalizeElement({ id: `gal-${t}`, name: t, market: "pt", blocks: [b] });
+      const products = { [el.blocks[0].id]: SAMPLE_PRODUCTS.concat(SAMPLE_PRODUCTS).slice(0, 8) };
+      const { html, bytes } = renderElement(el, { products, preview: true });
+      total += bytes;
+      const s = document.createElement("section");
+      s.innerHTML = `<h2>${BLOCKS[t].label} <code>${t}</code> <code>Figma: ${BLOCKS[t].figma}</code> <code>${(bytes / 1024).toFixed(1)} KB</code></h2><div class="wrap ${mode}"><iframe title="${t}" scrolling="no"></iframe></div>`;
+      g.appendChild(s);
+      const f = s.querySelector("iframe");
+      f.srcdoc = previewDocument(html, { title: t });
+      f.onload = () => { const fit = () => (f.style.height = f.contentDocument.documentElement.scrollHeight + "px"); fit(); new f.contentWindow.ResizeObserver(fit).observe(f.contentDocument.body); };
+    }
+    document.getElementById("info").textContent = `${BLOCK_TYPES.length} blocos`;
+  }
+  document.querySelectorAll("[data-w]").forEach((b) => (b.onclick = () => { mode = b.dataset.w; document.querySelectorAll("[data-w]").forEach((x) => x.classList.toggle("on", x === b)); draw(); }));
+  draw();
+</script>
+</body>
+</html>

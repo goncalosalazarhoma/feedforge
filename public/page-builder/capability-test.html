@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page Builder · teste de capacidades do Page Designer</title>
+<style>
+  body{margin:0;font:14px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:#f6f3ee;color:#1f1d1a}
+  main{max-width:860px;margin:0 auto;padding:28px 20px}
+  h1{font-size:22px;margin:0 0 6px} h2{font-size:15px;margin:24px 0 8px}
+  .card{background:#fff;border:1px solid #e7e1d8;border-radius:10px;padding:16px 18px}
+  textarea{width:100%;box-sizing:border-box;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;border:1px solid #e7e1d8;border-radius:8px;padding:10px}
+  button{font:inherit;border:1px solid #1f1d1a;background:#1f1d1a;color:#fff;border-radius:8px;padding:7px 14px;cursor:pointer}
+  ol li{margin-bottom:4px} code{font-size:12px;background:#f1ece4;padding:1px 5px;border-radius:4px}
+  .muted{color:#7a746b}
+</style>
+</head>
+<body>
+<main>
+  <h1>Teste de capacidades do Page Designer</h1>
+  <p class="muted">Antes de usar o HTML do Page Builder no site, confirma o que o componente <b>Raw HTML</b> do PWA Kit deixa passar. Até lá o Page Builder gera HTML <b>sem JavaScript</b>.</p>
+  <div class="card">
+    <h2 style="margin-top:0">1. Copia este código</h2>
+    <textarea id="snip" rows="17" readonly></textarea>
+    <p><button id="copy">Copiar código</button> <span id="ok" class="muted"></span></p>
+    <h2>2. Cola-o no sandbox de desenvolvimento</h2>
+    <ol>
+      <li>Abre o Business Manager do <b>development.homastores.com</b> → Page Designer, numa página de teste.</li>
+      <li>Adiciona um componente <b>Raw HTML</b>, cola o código e publica/pré-visualiza.</li>
+      <li>Abre a página no desktop e no telemóvel (ou no modo responsive do browser, &lt; 768px).</li>
+    </ol>
+    <h2>3. Vê o resultado</h2>
+    <ol>
+      <li>Texto verde em Gilroy → o <code>&lt;style&gt;</code> funciona.</li>
+      <li>Texto vermelho → <code>style=""</code> inline funciona.</li>
+      <li>Grelha de 2 colunas que passa a 1 no mobile → media queries funcionam.</li>
+      <li>Fila bege com scroll horizontal → <code>overflow-x</code> + <code>scroll-snap</code> funcionam.</li>
+      <li>“JavaScript correu.” → os <code>&lt;script&gt;</code> correm (provavelmente não, se o componente usar <code>innerHTML</code>).</li>
+      <li>O link relativo abre <code>/pt/pt/produtos</code>.</li>
+      <li>A imagem da almofada aparece.</li>
+    </ol>
+    <p>Depois, com o botão direito → <b>Inspecionar</b>, procura <code>hpb-test</code>: o <code>id="hpb-test"</code>, o <code>data-hpb-test</code> e o <code>data-item-id</code> continuam no DOM, ou foram removidos?</p>
+    <h2>4. Regista o resultado</h2>
+    <p>No FeedForge → <b>Page Builder</b> → “Registar resultado”. Se o JavaScript correr e os <code>data-*</code> se mantiverem, os carrosséis passam a ter setas.</p>
+  </div>
+  <p><a href="/#pagebuilder">← Voltar ao FeedForge</a></p>
+</main>
+<script>
+  const SNIPPET = `<div id="hpb-test" data-hpb-test="1">
+  <style>#hpb-test .a{color:#194e31;font:600 16px/28px Gilroy,sans-serif}#hpb-test .b{display:grid;grid-template-columns:1fr 1fr;gap:12px}#hpb-test .c{overflow-x:auto;scroll-snap-type:x mandatory;display:flex;gap:12px}#hpb-test .c>div{flex:0 0 160px;height:60px;background:#f3f1ea;scroll-snap-align:start}@media (max-width:767px){#hpb-test .b{grid-template-columns:1fr}}</style>
+  <p class="a">1. Se este texto está verde e em Gilroy, &lt;style&gt; funciona.</p>
+  <p style="color:#8e030f">2. Se este texto está vermelho, style inline funciona.</p>
+  <div class="b"><div>3a. grelha</div><div>3b. grelha (1 coluna no mobile = media queries OK)</div></div>
+  <div class="c"><div>4. scroll</div><div></div><div></div><div></div><div></div><div></div></div>
+  <p id="hpb-js">5. JavaScript NÃO correu.</p>
+  <script>document.getElementById('hpb-js').textContent='5. JavaScript correu.'<\/script>
+  <p><a href="/pt/pt/produtos" data-item-id="123">6. Link relativo com data-attribute</a></p>
+  <img src="https://www.homastores.com/dw/image/v2/BFDH_PRD/on/demandware.static/-/Sites-homa-catalog/default/dwef6476c6/images/large/473088_ALMOFADA35X50CMMULTICOLORSAVOY1.jpg?sw=200&q=80" alt="7. imagem" width="100" height="133" loading="lazy">
+</div>`;
+  const ta = document.getElementById("snip");
+  ta.value = SNIPPET;
+  document.getElementById("copy").onclick = async () => { await navigator.clipboard.writeText(SNIPPET); document.getElementById("ok").textContent = "Copiado ✓"; };
+</script>
+</body>
+</html>

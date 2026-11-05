@@ -20,6 +20,12 @@
     Cache-Control = "no-cache"
 
 [[headers]]
+  for = "/*.mjs"
+  [headers.values]
+    Cache-Control = "no-cache"
+    Content-Type = "text/javascript; charset=utf-8"
+
+[[headers]]
   for = "/*.css"
   [headers.values]
     Cache-Control = "no-cache"
@@ -28,3 +34,14 @@
   for = "/index.html"
   [headers.values]
     Cache-Control = "no-cache"
+
+# Page Builder static pages (pretty URLs)
+[[redirects]]
+  from = "/page-builder/blocks"
+  to = "/page-builder/blocks.html"
+  status = 200
+
+[[redirects]]
+  from = "/page-builder/capability-test"
+  to = "/page-builder/capability-test.html"
+  status = 200

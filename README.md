@@ -30,6 +30,8 @@ Campos **trancados** (por omissão `id, availability, price, sale_price, sale_pr
 | `ANTHROPIC_API_KEY` | chave da API Anthropic |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | conteúdo do JSON da service account (pode ser colado tal como está, ou em base64) |
 | `AI_MODEL` *(opcional)* | sobrepõe o modelo definido na app (por omissão `claude-haiku-4-5`) |
+| `PAGE_BUILDER_MODEL` *(opcional)* | modelo do Page Builder para gerar layouts (por omissão `claude-sonnet-4-5`) |
+| `PAGE_BUILDER_COPY_MODEL` *(opcional)* | modelo para afinações só de texto no Page Builder (por omissão `claude-haiku-4-5`) |
 
 Depois de definir as variáveis, faz *Deploys → Trigger deploy*.
 
@@ -140,9 +142,43 @@ Separador **Shop the Look** (menu lateral): módulos para o site novo (homastore
 Pré-visualização: o widget real num iframe (Desktop ou 375 px). O módulo só guarda referências (IDs, pins, badges, layout); os dados de produto vêm sempre do feed otimizado (`output` do último run de cada mercado, escolhido pela língua do feed `pt-PT`/`es-ES`).
 
 - Widget: `public/stl/widget.css` + `public/stl/widget.js` (`window.HomaShopTheLook.mount(sectionEl, config)`, pode ser chamado de novo; eventos GA4 `stl_pin_select` e `stl_product_click` com `stl_id`, `item_id`, `item_name`, `index`). Exemplo do código exportado numa página simples: `public/stl/export-test.html`.
-- API (`/api/stl/*`): `products?q=&category=&subcategory=&filters=&market=&page=` (ou `ids=`), `categories?market=`, `modules` (CRUD + `/:id/duplicate`), `render/:id?market=` e `POST render` (configuração com produtos do feed, `missing`/`oos` assinalados). Módulos em Netlify Blobs (`stl/modules/*`); o catálogo de cada mercado fica em cache (Blobs + memória, 5 min) e renova-se a cada run.
+- API (`/api/stl/*`): `products` e `categories` (aliases da pesquisa partilhada `/api/products*`, ver Page Builder), `modules` (CRUD + `/:id/duplicate`), `render/:id?market=` e `POST render` (configuração com produtos do feed, `missing`/`oos` assinalados). Módulos em Netlify Blobs (`stl/modules/*`); o catálogo de cada mercado fica em cache (Blobs + memória, 5 min) e renova-se a cada run.
 - Os módulos são editoriais: não entram no relatório de runs para o Filo.
-- Código: `netlify/lib/stl.mjs`, `public/stl-editor.js`, `public/stl/`; teste: `node test/stl.test.mjs`.
+- Código: `netlify/lib/stl.mjs`, `public/stl-editor.js`, `public/stl/`; pesquisa e picker partilhados com o Page Builder: `netlify/lib/products.mjs`, `public/product-picker.js`; teste: `node test/stl.test.mjs`.
+
+## Page Builder (Blocos HTML)
+Separador **Page Builder**: descreves um elemento em português, a IA monta-o com blocos aprovados do design system hôma (Figma "Website" → Page Designer Blocks / Sections), editas, preenches os blocos de produtos com o feed e copias o HTML para um componente **Raw HTML** do Page Designer (homastores.com, PT e ES).
+
+**Princípio:** a IA nunca escreve HTML. Devolve um JSON com blocos de uma biblioteca fixa, validado contra um JSON Schema gerado a partir das definições dos blocos; um renderer determinístico transforma o JSON em HTML + CSS. O resultado tem sempre o aspeto hôma, é seguro (tudo escapado, sem `<script>`, só links de homastores.com) e pode voltar a ser editado e gerado.
+
+### Como usar
+1. **Teste de capacidades (uma vez):** abre `/page-builder/capability-test`, cola o snippet num componente Raw HTML em development.homastores.com, vê os pontos 1–7 e inspeciona o DOM (o `id` e os `data-*` mantêm-se?). Regista o resultado no Page Builder → “Registar resultado”. Até lá o HTML é gerado **sem JavaScript** (carrosséis só com swipe/scroll); se o JavaScript correr e os `data-*` ficarem, os carrosséis passam a ter setas.
+2. **Novo elemento:** descreve o que precisas (ou usa um dos exemplos), escolhe mercado e página e carrega em **Gerar** (Claude, 20–60 s). Ex.: *“grelha de 4 imagens com link e CTA, depois um título + texto, e no fim um título e uma grelha de 8 produtos”* → `image-tiles` (4) → `text-block` → `section-heading` + `product-grid` (8). O que não existe na biblioteca (formulários, vídeo, contagem decrescente…) aparece em **Notas da IA**.
+3. **Editar:** pré-visualização à esquerda (Desktop 1440 / Mobile 375; clica num bloco para o selecionar). À direita:
+   - **Estrutura:** ordenar (arrastar ⠿ ou ↑↓), adicionar bloco (a seguir ao selecionado), duplicar, apagar, esconder no mobile/desktop.
+   - **Bloco:** formulário gerado a partir da definição do bloco: textos, imagem (URL https + alt + pré-visualização; a IA deixa a descrição da fotografia), links (validados e convertidos em `https://www.homastores.com/pt/pt/…`), fundo (só as cores permitidas), colunas, itens. Nos blocos de produtos: **Regra** (categoria → subcategoria do feed, promoção, stock, preço, ordenação, com contagem ao vivo) ou **Escolher produtos** (o mesmo ProductPicker do Shop the Look, com lista ordenável). **Congelar em lista manual** fixa os produtos que a regra dá agora.
+   - **IA:** afinar o elemento todo ou o bloco selecionado (“põe o título mais curto e troca para 3 colunas”). A proposta aparece com a lista de alterações e na pré-visualização; **Aplicar** ou **Descartar**. “Só textos” usa o Haiku (mais barato).
+4. **Guardar** grava o JSON (não só o HTML) e guarda as últimas 10 versões (**Versões** → restaurar).
+5. **Gerar HTML:** valida (alt em falta, links vazios ou fora de homastores.com, imagens sem https, produtos fora do feed/sem stock, `<h1>`, `<script>`), resolve os produtos no feed nesse momento e mostra o HTML (tamanho; aviso acima de 100 KB), **Copiar HTML**, **Descarregar .html** e pré-visualização a 1440 e 375 px. Os preços e o stock ficam fixos no HTML: quando algum produto do último HTML gerado muda de preço/stock no feed, a lista marca o elemento como **desatualizado** — volta a gerar e substitui no Page Designer.
+
+Galeria de todos os blocos com dados de exemplo (QA visual, desktop e 375 px): `/page-builder/blocks`. Exemplo do HTML exportado numa página simples: `public/page-builder/export-test.html`.
+
+### Contrato do HTML
+`<div class="hpb" id="hpb-{id}" data-hpb-version="1" data-hpb-element="{id}">` com um único `<style>` em que todos os seletores começam por `#hpb-{id}` (tokens do Figma como custom properties `--hpb-*`, Gilroy herdada do site, sem `@font-face`), um breakpoint a 768 px, sem JavaScript (salvo teste de capacidades), sem iframes, formulários, handlers inline nem estilos inline. Cada bloco tem `data-hpb-block` e `data-hpb-index`; cada produto `data-item-id`, `data-item-name`, `data-item-price` (para triggers de clique no GTM). Imagens com `alt`, `width`/`height`, `loading="lazy"`, `decoding="async"`.
+
+### Adicionar um tipo de bloco
+Tudo vive em `public/page-builder/engine.mjs` (usado pelo editor, pelas functions e pelos testes):
+1. **Definição + schema:** acrescenta uma entrada a `BLOCKS` com `label`, `figma`, `llm` (descrição para a IA: o que é e quando usar), `props` (helpers `F.text`, `F.long`, `F.rich`, `F.image`, `F.link`, `F.enum`, `F.int`, `F.bool`, `F.products`), `items` (repetidor, opcional), `defaults` e `sample`. O JSON Schema (`blockSchema`), a normalização, o formulário do editor, a validação e a descrição na prompt (`libraryForPrompt`) saem daqui automaticamente.
+2. **Renderer:** um `case` em `renderBlockInner` (só com `esc()`, `img()`, `button()` e `productCard()`) e o CSS em `BLOCK_CSS[tipo]` (seletores com `&`, cores só dos tokens, regra mobile em `@media (max-width:767px)`). Regras que dependem de props vão para `blockCss`.
+3. **Galeria:** o `sample` aparece em `/page-builder/blocks`.
+4. **Testes:** `UPDATE_SNAPSHOTS=1 node test/page-builder.test.mjs` grava o snapshot do novo bloco; depois `node test/page-builder.test.mjs`.
+
+### Técnico
+- API (`/api/page-builder/*`): `generate` (cria um job e corre em `netlify/functions/page-builder-background.mjs`; a UI consulta `jobs/:id`), `hydrate` (produtos para a pré-visualização), `export` (HTML + validação + snapshot dos produtos), `elements` (CRUD, `/:id/versions`, `/:id/duplicate`), `settings` (resultado do teste de capacidades), `log`, `library`.
+- Pesquisa de produtos partilhada (Shop the Look + Page Builder), sobre o feed **otimizado** de cada mercado: `GET /api/products?q=&category=&subcategory=&onSale=&inStock=&priceMin=&priceMax=&color=&material=&market=&page=` (ou `ids=`), `GET /api/products/categories?market=`, `POST /api/products/resolve` (`{ids}` ou regra → produtos com `missing`/`oos`). Badges: “Exclusivo online”/“Sustentável” quando um custom label o diz, “Novo” para produtos vistos pela primeira vez há menos de 30 dias.
+- Claude com tool use (`emit_element` / `emit_block`) e o schema dos blocos; a resposta é validada (uma nova tentativa com os erros) e normalizada; categorias fora da árvore do feed são removidas com nota. Cada geração fica registada (`pb/log`: prompt, modelo, tokens, tempo). Mesmas variáveis `ANTHROPIC_API_KEY`/`ANTHROPIC_WORKSPACE_ID` do resto da app.
+- Elementos, versões, jobs e definições em Netlify Blobs (`pb/*`). O Page Builder é editorial: nada é reportado ao Filo.
+- Código: `netlify/lib/page-builder.mjs`, `public/page-builder/engine.mjs`, `public/page-builder.js`, `public/page-builder/{blocks,capability-test,export-test}.html`; teste: `node test/page-builder.test.mjs`.
 
 ## Feed em XML
 Além do Sheets (CSV), cada feed tem links XML públicos (Dashboard → Links XML), gerados a partir do output do último run:
