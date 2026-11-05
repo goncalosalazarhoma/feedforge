@@ -6,20 +6,29 @@ import { db } from "./store.mjs";
 const TOKEN_KEY = "pim/akeneo-token";
 const ENV = ["AKENEO_CLIENT_ID", "AKENEO_SECRET", "AKENEO_USERNAME", "AKENEO_PASSWORD"];
 
-export const akeneoBase = () => (process.env.AKENEO_URL || "https://homa.cloud.akeneo.com").replace(/\/+$/, "");
-export const akeneoMissing = () => ENV.filter((k) => !process.env[k]);
+// values pasted into Netlify often carry a stray space or line break
+const env = (k) => String(process.env[k] ?? "").trim();
+export const akeneoBase = () => (env("AKENEO_URL") || "https://homa.cloud.akeneo.com").replace(/\/+$/, "");
+export const akeneoMissing = () => ENV.filter((k) => !env(k));
 
 async function newToken() {
   const missing = akeneoMissing();
   if (missing.length) throw Object.assign(new Error(`Faltam variáveis de ambiente: ${missing.join(", ")}`), { status: 400 });
-  const basic = Buffer.from(`${process.env.AKENEO_CLIENT_ID}:${process.env.AKENEO_SECRET}`).toString("base64");
+  const basic = Buffer.from(`${env("AKENEO_CLIENT_ID")}:${env("AKENEO_SECRET")}`).toString("base64");
   const res = await fetch(`${akeneoBase()}/api/oauth/v1/token`, {
     method: "POST",
     headers: { authorization: `Basic ${basic}`, "content-type": "application/json" },
-    body: JSON.stringify({ grant_type: "password", username: process.env.AKENEO_USERNAME, password: process.env.AKENEO_PASSWORD }),
+    body: JSON.stringify({ grant_type: "password", username: env("AKENEO_USERNAME"), password: env("AKENEO_PASSWORD") }),
     signal: AbortSignal.timeout(20_000),
   });
-  if (!res.ok) throw Object.assign(new Error(`Akeneo recusou a autenticação (${res.status}) — confirma as credenciais da ligação`), { status: 502 });
+  if (!res.ok) {
+    // show Akeneo's own reason (it never echoes the credentials) and which variables to check
+    const text = await res.text();
+    let msg = text.slice(0, 200);
+    try { msg = JSON.parse(text).message || msg; } catch {}
+    const hint = /client|secret/i.test(msg) ? "verifica AKENEO_CLIENT_ID e AKENEO_SECRET" : /user|password/i.test(msg) ? "verifica AKENEO_USERNAME e AKENEO_PASSWORD" : `confirma as credenciais e o AKENEO_URL (${akeneoBase()})`;
+    throw Object.assign(new Error(`Akeneo recusou a autenticação (${res.status}): ${msg} — ${hint}`), { status: 502 });
+  }
   const j = await res.json();
   const t = { access_token: j.access_token, exp: Date.now() + (j.expires_in || 3600) * 1000 - 60_000 };
   await db.set(TOKEN_KEY, t); // server-side only (Netlify Blobs)
