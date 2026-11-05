@@ -1,24 +1,23 @@
 /* FeedForge — Shop the Look editor (modules for the SFCC storefront, products from the FeedForge feed). */
 (() => {
   "use strict";
-  const { $, $$, esc, toast, guard, ask, api, VIEWS } = window.FF;
+  const { $, $$, esc, toast, guard, ask, api, VIEWS, ProductPicker: PP } = window.FF;
 
   const MARKETS = { pt: "PT", es: "ES" };
   const PAGES = { homepage: "Homepage", plp: "PLP", pdp: "PDP" };
   const TONES = { "": "Branco (Novo)", brand: "Amarelo (marca)", success: "Verde (sustentável)" };
-  const FACET_LABEL = { color: "Cor", material: "Material", brand: "Marca", condition: "Estado", custom_label_0: "Label 0", custom_label_1: "Label 1", custom_label_2: "Label 2", custom_label_3: "Label 3", custom_label_4: "Label 4" };
   const FONTS = ["Regular:400", "Medium:500", "SemiBold:600"].map((f) => { const [n, w] = f.split(":"); return `@font-face{font-family:Gilroy;font-weight:${w};src:url("https://www.homastores.com/mobify/bundle/106/static/fonts/gilroy/Gilroy${n}.woff2") format("woff2")}`; }).join("");
 
   const ST = {
     mod: null, saved: "", tab: "modulo", device: "desktop", moving: false,
-    pcache: { pt: {}, es: {} },            // id -> product (null = not in the feed)
-    cats: {}, picker: { q: "", category: "", subcategory: "", page: 1, filters: { inStock: true, sale: false, priceMin: "", priceMax: "", attrs: {} } },
+    pcache: PP.cache,                      // shared ProductPicker cache: id -> product (null = not in the feed)
+    picker: PP.newState(),
     assets: null, frame: null, exported: "",
   };
 
   const blank = () => ({ name: "Novo Shop the Look", market: "pt", page: "homepage", status: "draft", eyebrow: "Shop the look", title: "", image: { src: "", alt: "" }, blockColor: "#dfdbd2", cta: { show: true, text: "Ver todos os produtos", url: "", x: 50, y: 92 }, popoverCta: "Ver produto", activeIndex: 0, products: [] });
   const dirty = () => ST.mod && JSON.stringify(ST.mod) !== ST.saved;
-  const fmt = (n, m) => (n == null ? "—" : new Intl.NumberFormat(m === "es" ? "es-ES" : "pt-PT", { style: "currency", currency: "EUR" }).format(n));
+  const fmt = PP.fmt;
   const get = (o, path) => path.split(".").reduce((a, k) => a?.[k], o);
   const set = (o, path, v) => { const ks = path.split("."); const last = ks.pop(); ks.reduce((a, k) => (a[k] ||= {}), o)[last] = v; };
 
@@ -31,13 +30,7 @@
   }
 
   // ------------------------------------------------------------------ feed data
-  async function fetchIds(market, ids) {
-    const need = ids.filter((id) => !(id in ST.pcache[market]));
-    for (let i = 0; i < need.length; i += 50) {
-      const r = await api(`/stl/products?market=${market}&ids=${encodeURIComponent(need.slice(i, i + 50).join(","))}`);
-      for (const p of r.items) ST.pcache[market][p.id] = p.missing ? null : p;
-    }
-  }
+  const fetchIds = PP.fetchIds; // /api/products?ids= (shared with Page Builder)
 
   // same shape as /api/stl/render (server) — used for the live preview
   function hydrateLocal() {
@@ -75,7 +68,7 @@
     await guard(async () => {
       const m = id ? await api(`/stl/modules/${id}`) : blank();
       ST.mod = m; ST.saved = id ? JSON.stringify(m) : ""; ST.tab = "modulo"; ST.moving = false; ST.exported = "";
-      ST.picker = { ...ST.picker, q: "", category: "", subcategory: "", page: 1 };
+      ST.picker = { ...ST.picker, q: "", category: "", subcategory: "", page: 1, result: null };
       await fetchIds(m.market, m.products.map((p) => p.id)).catch((e) => toast(e.message, true));
       drawEditor(main);
     });
@@ -93,17 +86,11 @@
         .stl-frame-wrap iframe{border:0;width:100%;display:block;background:#fff}
         .stl-frame-wrap.mobile iframe{width:375px;box-shadow:0 0 0 1px var(--line)}
         .stl-panel{max-height:calc(100vh - 120px);overflow:auto}
-        .stl-results{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-        .stl-res{display:flex;gap:8px;border:1px solid var(--line);border-radius:8px;padding:6px;background:#fff}
-        .stl-res img,.stl-item img{width:56px;height:56px;object-fit:cover;border-radius:6px;background:var(--soft);flex:0 0 auto}
-        .stl-res .t{font-size:12px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-        .stl-res.added{opacity:.6}
+        .stl-item img{width:56px;height:56px;object-fit:cover;border-radius:6px;background:var(--soft);flex:0 0 auto}
         .stl-item{border:1px solid var(--line);border-radius:8px;padding:8px;background:#fff;margin-bottom:8px}
         .stl-item.drag-over{border-color:var(--accent)}
         .stl-item .handle{cursor:grab;color:var(--muted);user-select:none;padding:0 4px}
         .stl-item input[type=range]{flex:1}
-        .stl-cats a{display:flex;justify-content:space-between;padding:4px 6px;border-radius:6px;cursor:pointer;font-size:13px}
-        .stl-cats a:hover{background:var(--soft)}
       </style>
       <div class="head"><div><a href="#" id="stl-back" class="small">← Shop the Look</a><h1 style="margin:4px 0 0">${esc(m.name)}</h1>
         <div class="small muted">${m.id ? `<span class="mono">${esc(m.id)}</span> · ` : ""}${esc(MARKETS[m.market])} · ${esc(PAGES[m.page])} · ${m.status === "live" ? "live" : "rascunho"}<span id="stl-dirty"></span></div></div>
@@ -247,7 +234,7 @@
         if (k === "blockColor") $$('[data-k="blockColor"]', box).forEach((o) => { if (o !== el) o.value = v; });
         if (k === "image.src") imgInfo();
         if (k === "name") $("h1", main).textContent = v || "—";
-        if (k === "market" && v !== prevMarket) { ST.picker = { ...ST.picker, category: "", subcategory: "", page: 1 }; await guard(() => fetchIds(v, m.products.map((p) => p.id))); }
+        if (k === "market" && v !== prevMarket) { ST.picker = { ...ST.picker, category: "", subcategory: "", page: 1, result: null }; await guard(() => fetchIds(v, m.products.map((p) => p.id))); }
         changed();
       });
     });
@@ -294,81 +281,31 @@
     $$("[data-bt]", box).forEach((el) => (el.onchange = () => { const [i, j] = el.dataset.bt.split(":").map(Number); if (el.value) m.products[i].badges[j].tone = el.value; else delete m.products[i].badges[j].tone; upd(); }));
     $$("[data-brm]", box).forEach((el) => (el.onclick = () => { const [i, j] = el.dataset.brm.split(":").map(Number); m.products[i].badges.splice(j, 1); drawLook(); upd(); }));
     $$("[data-badd]", box).forEach((el) => (el.onclick = () => { const i = +el.dataset.badd; (m.products[i].badges ||= []).push({ label: "Novo" }); drawLook(); upd(); }));
-    // drag to reorder (carousel order)
-    let from = null;
-    $$(".stl-item", box).forEach((it) => {
-      // only the ⠿ handle starts a drag, so the sliders keep working
-      const h = it.querySelector(".handle");
-      h.addEventListener("pointerdown", () => { it.draggable = true; });
-      it.addEventListener("dragend", () => { it.draggable = false; });
-      it.addEventListener("dragstart", (e) => { from = +it.dataset.i; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", String(from)); });
-      it.addEventListener("dragover", (e) => { e.preventDefault(); it.classList.add("drag-over"); });
-      it.addEventListener("dragleave", () => it.classList.remove("drag-over"));
-      it.addEventListener("drop", (e) => {
-        e.preventDefault(); it.classList.remove("drag-over");
-        const to = +it.dataset.i;
-        if (from == null || from === to) return;
-        const activeId = m.products[m.activeIndex]?.id;
-        const [moved] = m.products.splice(from, 1);
-        m.products.splice(to, 0, moved);
-        m.activeIndex = Math.max(0, m.products.findIndex((p) => p.id === activeId));
-        from = null; drawLook(); upd();
-      });
+    // drag to reorder (carousel order) — only the ⠿ handle starts a drag, so the sliders keep working
+    PP.enableReorder(box, ".stl-item", (from, to) => {
+      const activeId = m.products[m.activeIndex]?.id;
+      const [moved] = m.products.splice(from, 1);
+      m.products.splice(to, 0, moved);
+      m.activeIndex = Math.max(0, m.products.findIndex((p) => p.id === activeId));
+      drawLook(); upd();
     });
   }
 
   function refreshTabLabel() { const c = $('[data-tab="produtos"]'); if (c) c.textContent = `Produtos · ${ST.mod.products.length}`; }
 
-  async function drawPicker(reload = true) {
-    const box = $("#stl-picker");
-    if (!box) return;
-    const m = ST.mod, P = ST.picker, f = P.filters;
-    if (!ST.cats[m.market]) await guard(async () => { ST.cats[m.market] = await api(`/stl/categories?market=${m.market}`); });
-    const tree = ST.cats[m.market];
-    if (!tree) { box.innerHTML = `<div class="callout">Não foi possível ler o feed ${esc(MARKETS[m.market])}.</div>`; return; }
-    if (reload || !P.result) {
-      const qs = new URLSearchParams({ market: m.market, q: P.q, category: P.category, subcategory: P.subcategory, page: P.page, size: 24, filters: JSON.stringify(f) });
-      P.result = await guard(() => api(`/stl/products?${qs}`));
-      for (const p of P.result?.items || []) ST.pcache[m.market][p.id] = p;
-    }
-    const r = P.result || { items: [], total: 0, facets: {}, page: 1, size: 24 };
-    const level = P.subcategory ? null : P.category ? tree.children.find((c) => c.name === P.category)?.children || [] : tree.children;
-    const inLook = new Set(m.products.map((p) => p.id));
-    const pages = Math.max(1, Math.ceil(r.total / r.size));
-    box.innerHTML = `
-      <div class="row"><input id="stl-q" placeholder="ID, EAN ou nome…" value="${esc(P.q)}" style="flex:1"/><button class="btn sm" id="stl-qgo">Procurar</button></div>
-      <div class="small" style="margin:8px 0"><a href="#" data-crumb="">Todas</a>${P.category ? ` › <a href="#" data-crumb="cat">${esc(P.category)}</a>` : ""}${P.subcategory ? ` › <b>${esc(P.subcategory)}</b>` : ""}</div>
-      ${level && level.length ? `<div class="stl-cats" style="max-height:150px;overflow:auto;margin-bottom:8px">${level.slice(0, 60).map((c) => `<a data-cat="${esc(c.name)}"><span>${esc(c.name)}</span><span class="muted">${c.count}</span></a>`).join("")}</div>` : ""}
-      <div class="chips" style="margin-bottom:6px">
-        <span class="chip ${f.inStock !== false ? "on" : ""}" data-flt="inStock">Só em stock</span>
-        <span class="chip ${f.sale ? "on" : ""}" data-flt="sale">Em promoção</span>
-      </div>
-      <div class="row small" style="margin-bottom:6px">Preço <input id="stl-pmin" type="number" min="0" placeholder="mín" value="${esc(f.priceMin)}" style="width:72px"/>–<input id="stl-pmax" type="number" min="0" placeholder="máx" value="${esc(f.priceMax)}" style="width:72px"/> €
-        ${Object.entries(r.facets || {}).filter(([c]) => FACET_LABEL[c]).slice(0, 4).map(([c, vals]) => `<select data-facet="${esc(c)}" style="max-width:140px"><option value="">${esc(FACET_LABEL[c])}: todas</option>${vals.map((v) => `<option value="${esc(v.value)}" ${(f.attrs[c] || [])[0] === v.value ? "selected" : ""}>${esc(v.value)} (${v.count})</option>`).join("")}</select>`).join("")}
-        ${Object.values(f.attrs).some((v) => v?.length) ? `<a href="#" id="stl-clear-attrs">limpar</a>` : ""}</div>
-      <div class="small muted" style="margin-bottom:6px">${r.total} produto(s)</div>
-      <div class="stl-results">${r.items.map((p) => `<div class="stl-res ${inLook.has(p.id) ? "added" : ""}"><img src="${esc(p.image)}" alt="" loading="lazy"/>
-        <div style="min-width:0;flex:1"><div class="t">${esc(p.title)}</div><div class="small muted mono">${esc(p.id)}</div>
-          <div class="small"><b>${fmt(p.salePrice ?? p.price, m.market)}</b>${p.salePrice ? ` <s class="muted">${fmt(p.price, m.market)}</s>` : ""}${p.inStock ? "" : ` <span class="badge flag">sem stock</span>`}</div>
-          ${inLook.has(p.id) ? `<span class="badge new">✓ no look</span>` : `<button class="btn sm" data-add="${esc(p.id)}">Adicionar ao look</button>`}</div></div>`).join("") || `<p class="muted small">Nada encontrado.</p>`}</div>
-      ${pages > 1 ? `<div class="row small" style="margin-top:8px"><button class="btn sm" id="stl-pp" ${r.page <= 1 ? "disabled" : ""}>←</button><span>${r.page}/${pages}</span><button class="btn sm" id="stl-pn" ${r.page >= pages ? "disabled" : ""}>→</button></div>` : ""}`;
-    const go = () => { P.page = 1; drawPicker(); };
-    $("#stl-qgo").onclick = () => { P.q = $("#stl-q").value.trim(); go(); };
-    $("#stl-q").onkeydown = (e) => { if (e.key === "Enter") { P.q = e.target.value.trim(); go(); } };
-    $$("[data-crumb]", box).forEach((a) => (a.onclick = (e) => { e.preventDefault(); if (!a.dataset.crumb) P.category = ""; P.subcategory = ""; go(); }));
-    $$("[data-cat]", box).forEach((a) => (a.onclick = () => { if (!P.category) P.category = a.dataset.cat; else P.subcategory = a.dataset.cat; go(); }));
-    $$("[data-flt]", box).forEach((c) => (c.onclick = () => { const k = c.dataset.flt; f[k] = k === "inStock" ? f.inStock === false : !f[k]; go(); }));
-    $("#stl-pmin").onchange = (e) => { f.priceMin = e.target.value; go(); };
-    $("#stl-pmax").onchange = (e) => { f.priceMax = e.target.value; go(); };
-    $$("[data-facet]", box).forEach((s) => (s.onchange = () => { f.attrs[s.dataset.facet] = s.value ? [s.value] : []; go(); }));
-    if ($("#stl-clear-attrs")) $("#stl-clear-attrs").onclick = (e) => { e.preventDefault(); f.attrs = {}; go(); };
-    if ($("#stl-pp")) $("#stl-pp").onclick = () => { P.page--; drawPicker(); };
-    if ($("#stl-pn")) $("#stl-pn").onclick = () => { P.page++; drawPicker(); };
-    $$("[data-add]", box).forEach((b) => (b.onclick = () => {
-      const n = m.products.length;
-      m.products.push({ id: b.dataset.add, pin: { x: 20 + ((n * 13) % 60), y: 30 + ((n * 17) % 50), show: true }, badges: [] });
-      drawLook(); drawPicker(false); changed(); refreshTabLabel();
-    }));
+  // shared ProductPicker (public/product-picker.js) — the look list above keeps pins/badges
+  function drawPicker(reload = true) {
+    const m = ST.mod;
+    return PP.mount($("#stl-picker"), {
+      market: m.market, state: ST.picker, reload,
+      isSelected: (id) => m.products.some((p) => p.id === id),
+      addLabel: "Adicionar ao look", selectedLabel: "✓ no look",
+      onAdd: (p) => {
+        const n = m.products.length;
+        m.products.push({ id: p.id, pin: { x: 20 + ((n * 13) % 60), y: 30 + ((n * 17) % 50), show: true }, badges: [] });
+        drawLook(); changed(); refreshTabLabel();
+      },
+    });
   }
 
   // ---------- export
