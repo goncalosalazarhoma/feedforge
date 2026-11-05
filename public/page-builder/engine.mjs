@@ -50,6 +50,7 @@ const F = {
   int: (label, min, max, def, o = {}) => ({ kind: "int", label, min, max, default: def, ...o }),
   bool: (label, def = false, o = {}) => ({ kind: "bool", label, default: def, ...o }),
   products: (label) => ({ kind: "products", label }),
+  tree: (label) => ({ kind: "tree", label }),
 };
 
 export const COMMON = {
@@ -163,6 +164,12 @@ export const BLOCKS = {
     sample: { props: { size: 48 } },
   },
 };
+BLOCKS.composition = {
+  label: "Composição", figma: "Design system (primitivas)",
+  llm: "Elemento NOVO ou ADAPTAÇÃO de um bloco, montado com as primitivas do design system (ver secção Primitivas). Usa só quando nenhum bloco da biblioteca serve ou o pedido pede uma variação que os blocos não têm (ex.: hero com 2 botões, cartões com preço, colunas mistas).",
+  props: { tree: F.tree("Estrutura da composição"), template: F.text("Bloco guardado de origem", { max: 60, hidden: true }) },
+  defaults: { paddingTop: 48, paddingBottom: 48 },
+};
 export const BLOCK_TYPES = Object.keys(BLOCKS);
 export const PRODUCT_BLOCKS = ["product-grid", "product-carousel"];
 export const SORTS = [["feed_order", "Ordem do feed"], ["price_asc", "Preço ↑"], ["price_desc", "Preço ↓"], ["newest", "Mais recentes"]];
@@ -189,12 +196,13 @@ function fieldSchema(f) {
       },
       required: ["mode"], additionalProperties: false,
     };
+    case "tree": return { $ref: "#/$defs/node", description: f.label };
     default: throw new Error(`campo desconhecido ${f.kind}`);
   }
 }
 const objSchema = (fields, required = []) => ({ type: "object", properties: Object.fromEntries(Object.entries(fields).map(([k, f]) => [k, fieldSchema(f)])), required, additionalProperties: false });
 
-export function blockSchema(type) {
+export function blockSchema(type, { standalone = true } = {}) {
   const d = BLOCKS[type];
   const req = Object.entries(d.props).filter(([, f]) => f.required).map(([k]) => k);
   const s = {
@@ -206,6 +214,7 @@ export function blockSchema(type) {
     s.properties.items = { type: "array", minItems: d.items.min, maxItems: d.items.max, items: objSchema(d.items.fields) };
     s.required.push("items");
   }
+  if (standalone && type === "composition") s.$defs = nodeDefs();
   return s;
 }
 
@@ -214,27 +223,34 @@ export function elementSchema() {
     type: "object",
     properties: {
       name: { type: "string", maxLength: 80, description: "nome curto do elemento (para a lista)" },
-      blocks: { type: "array", minItems: 1, maxItems: 20, items: { anyOf: BLOCK_TYPES.map(blockSchema) } },
+      blocks: { type: "array", minItems: 1, maxItems: 20, items: { anyOf: BLOCK_TYPES.map((t) => blockSchema(t, { standalone: false })) } },
       notes: { type: "array", items: { type: "string", maxLength: 300 }, description: "o que o pedido tinha e não foi possível fazer com a biblioteca (formulários, vídeo, contagem decrescente…)" },
     },
     required: ["name", "blocks"], additionalProperties: false,
+    $defs: nodeDefs(),
   };
 }
 export function singleBlockSchema() {
-  return { type: "object", properties: { block: { anyOf: BLOCK_TYPES.map(blockSchema) }, notes: { type: "array", items: { type: "string" } } }, required: ["block"], additionalProperties: false };
+  return { type: "object", properties: { block: { anyOf: BLOCK_TYPES.map((t) => blockSchema(t, { standalone: false })) }, notes: { type: "array", items: { type: "string" } } }, required: ["block"], additionalProperties: false, $defs: nodeDefs() };
 }
 
 // small JSON Schema validator for exactly the subset generated above (type, properties, required,
 // additionalProperties:false, enum, const, maxLength, minimum, maximum, items, minItems, maxItems, anyOf)
-export function validateSchema(schema, value, path = "$") {
+export function validateSchema(schema, value, path = "$", root = schema) {
+  if (schema.$ref) {
+    const def = schema.$ref.startsWith("#/$defs/") ? root.$defs?.[schema.$ref.slice(8)] : null;
+    if (!def) return [`${path}: $ref desconhecido ${schema.$ref}`];
+    return validateSchema(def, value, path, root);
+  }
   const errs = [];
   const typeOk = (t, v) => (t === "integer" ? Number.isInteger(v) : t === "number" ? typeof v === "number" && Number.isFinite(v) : t === "array" ? Array.isArray(v) : t === "object" ? v !== null && typeof v === "object" && !Array.isArray(v) : typeof v === t);
   if (schema.anyOf) {
-    // discriminate blocks by their `type` const for readable errors
-    const byConst = schema.anyOf.find((s) => s.properties?.type?.const && value?.type === s.properties.type.const);
-    if (byConst) return validateSchema(byConst, value, path);
-    if (schema.anyOf.some((s) => !validateSchema(s, value, path).length)) return errs;
-    return [`${path}: não corresponde a nenhum tipo permitido${value?.type ? ` (type "${value.type}" não existe)` : ""}`];
+    // discriminate blocks by `type` and primitives by `kind` for readable errors
+    const byConst = schema.anyOf.find((s) => (s.properties?.type?.const && value?.type === s.properties.type.const) || (s.properties?.kind?.const && value?.kind === s.properties.kind.const));
+    if (byConst) return validateSchema(byConst, value, path, root);
+    if (schema.anyOf.some((s) => !validateSchema(s, value, path, root).length)) return errs;
+    const tag = value?.type ? ` (type "${value.type}" não existe)` : value?.kind ? ` (kind "${value.kind}" não existe)` : "";
+    return [`${path}: não corresponde a nenhum tipo permitido${tag}`];
   }
   if ("const" in schema && value !== schema.const) return [`${path}: tem de ser ${JSON.stringify(schema.const)}`];
   if (schema.enum && !schema.enum.includes(value)) return [`${path}: valor ${JSON.stringify(value)} fora de ${JSON.stringify(schema.enum)}`];
@@ -247,12 +263,12 @@ export function validateSchema(schema, value, path = "$") {
   if (Array.isArray(value)) {
     if (schema.minItems != null && value.length < schema.minItems) errs.push(`${path}: mínimo ${schema.minItems} elementos`);
     if (schema.maxItems != null && value.length > schema.maxItems) errs.push(`${path}: máximo ${schema.maxItems} elementos`);
-    if (schema.items) value.forEach((v, i) => errs.push(...validateSchema(schema.items, v, `${path}[${i}]`)));
+    if (schema.items) value.forEach((v, i) => errs.push(...validateSchema(schema.items, v, `${path}[${i}]`, root)));
   }
   if (schema.type === "object" && value) {
     for (const k of schema.required || []) if (!(k in value)) errs.push(`${path}.${k}: obrigatório`);
     for (const [k, v] of Object.entries(value)) {
-      if (schema.properties?.[k]) errs.push(...validateSchema(schema.properties[k], v, `${path}.${k}`));
+      if (schema.properties?.[k]) errs.push(...validateSchema(schema.properties[k], v, `${path}.${k}`, root));
       else if (schema.additionalProperties === false) errs.push(`${path}.${k}: propriedade não permitida`);
     }
   }
@@ -286,6 +302,7 @@ function normField(f, v) {
     case "int": { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.max(f.min, Math.min(f.max, n)) : f.default; }
     case "bool": return v == null ? f.default : !!v;
     case "products": return normalizeSource(v);
+    case "tree": return normalizeNode(v) || normalizeNode({ kind: "stack", children: [] });
     default: return v;
   }
 }
@@ -305,6 +322,7 @@ export function normalizeBlock(raw = {}) {
     if (rawProps.limit == null && raw.props?.productSource?.limit) props.limit = normField(d.props.limit, raw.props.productSource.limit);
     if (props.productSource.mode === "rule") props.productSource.limit = props.limit;
   }
+  if (props.tree) demoteHeadings(props.tree);
   const b = { id: /^[a-z][a-z0-9-]{1,40}$/i.test(raw.id || "") ? raw.id : newId(), type: raw.type, props };
   if (d.items) {
     const src = Array.isArray(raw.items) ? raw.items : Array.isArray(raw.props?.rows) ? raw.props.rows : Array.isArray(raw.props?.items) ? raw.props.items : [];
@@ -341,7 +359,177 @@ export function blankBlock(type) {
 }
 export function sampleBlock(type) {
   const d = BLOCKS[type];
+  if (type === "composition") {
+    let k = 0;
+    const withIds = (n) => ({ ...n, id: `s${k++}`, ...(n.children ? { children: n.children.map(withIds) } : {}) });
+    return normalizeBlock({ type, id: "s-composition", props: { tree: withIds(SAMPLE_TREE) } });
+  }
   return normalizeBlock({ type, id: `s-${type}`, props: { ...(d.sample?.props || {}) }, items: d.sample?.items });
+}
+
+// ---------------------------------------------------------------------------- design-system primitives ("composition" block)
+// New elements and adaptations are composed from these pieces; every value comes from the tokens above,
+// the renderer still writes all HTML/CSS. A good composition can be saved as a reusable block.
+export const TEXT_STYLES = {
+  display1: ["Display 1 Light", "t-d1"], display1m: ["Display 1 Medium", "t-d1 fw5"], display2: ["Display 2", "t-d2"], display3: ["Display 3 (título de secção)", "t-d3"],
+  h4: ["H4", "t-h4"], h5: ["H5", "t-h5"], h6: ["H6", "t-h6"], eyebrow: ["Eyebrow (Subtitle Light, maiúsculas)", "t-sub"], subtitle: ["Subtitle Medium", "t-subm"],
+  body1: ["Body 1", "t-b1"], body1m: ["Body 1 Medium", "t-b1 fw5"], body1sb: ["Body 1 Semibold", "t-b1 fw6"], body2: ["Body 2", "t-b2"], caption: ["Caption Bold (kicker)", "t-cap"], small: ["Small", "t-sm"],
+};
+export const TEXT_COLORS = { auto: "Automática", text: "Texto #181818", headline: "Títulos #000", secondary: "Secundário #444", white: "Branco", brand: "Marca #daaa00" };
+export const ASPECTS = ["auto", "1:1", "4:5", "3:4", "285:380", "2:3", "4:3", "3:2", "16:9", "1920:744", "1280:810", "375:810"];
+export const PANEL_BGS = [["none", "Transparente"], ["white", "Branco"], ["beige", "Bege #f3f1ea"], ["sand", "Color block #dfdbd2"], ["brown", "Castanho #583d3e"], ["dark", "Escuro #181818"], ["surface", "Neutro #f3f3f3"], ["glass", "Glass card"], ["image", "Imagem"]];
+const DARK_PANELS = new Set(["brown", "dark", "image"]);
+const GAP = SPACING.filter((n) => n <= 80).map((n) => [n, `${n}px`]);
+const POS = (l) => [["left", "Esquerda"], ["center", "Centro"], ["right", "Direita"]].map(([v, t]) => [v, l ? `${t}` : t]);
+
+export const PRIMS = {
+  row: {
+    label: "Colunas", container: true, llm: "colunas lado a lado (no mobile: 1, 2 ou scroll horizontal)",
+    fields: { cols: F.int("Colunas (desktop)", 1, 6, 2), split: F.enum("Larguras (com 2 colunas)", [["equal", "Iguais"], ["2-1", "2/3 + 1/3"], ["1-2", "1/3 + 2/3"]], "equal"), mobile: F.enum("No mobile", [["1", "1 coluna"], ["2", "2 colunas"], ["scroll", "Scroll horizontal"]], "1"), gap: F.enum("Espaço entre colunas", GAP, 12), valign: F.enum("Alinhamento vertical", [["stretch", "Esticar"], ["start", "Topo"], ["center", "Centro"], ["end", "Fundo"]], "stretch"), reverse: F.bool("Ordem inversa no desktop (no mobile fica pela ordem da lista)", false) },
+  },
+  stack: {
+    label: "Pilha", container: true, llm: "elementos uns por baixo dos outros",
+    fields: { gap: F.enum("Espaço entre elementos", GAP, 16), align: F.enum("Alinhamento", POS(), "left"), maxWidth: F.enum("Largura máxima", [[0, "Sem limite"], [480, "480px"], [720, "720px"], [960, "960px"], [1200, "1200px"]], 0) },
+  },
+  panel: {
+    label: "Painel", container: true, llm: "caixa com fundo (cor permitida, glass card ou imagem com gradiente), proporção e posição do conteúdo; serve para heros, cartões e color blocks",
+    fields: { bg: F.enum("Fundo", PANEL_BGS, "none"), image: F.image("Imagem de fundo", { required: false }), overlay: F.enum("Gradiente sobre a imagem", [["none", "Nenhum"], ["light", "Leve"], ["medium", "Médio"], ["strong", "Forte"]], "none"), padding: F.enum("Espaço interior", GAP, 40), aspect: F.enum("Proporção (desktop)", ASPECTS, "auto"), mobileAspect: F.enum("Proporção (mobile)", ASPECTS, "auto"), vpos: F.enum("Conteúdo na vertical", [["top", "Topo"], ["center", "Centro"], ["bottom", "Fundo"]], "top"), hpos: F.enum("Conteúdo na horizontal", POS(), "left"), link: F.link("Link do painel inteiro", { urlOnly: true }) },
+  },
+  text: {
+    label: "Texto", llm: "texto com um estilo do type scale; level h2 só para o título principal do bloco",
+    fields: { text: F.long("Texto", { max: 400 }), style: F.enum("Estilo", Object.entries(TEXT_STYLES).map(([k, [l]]) => [k, l]), "body1"), level: F.enum("Tag", [["p", "Parágrafo"], ["h2", "Título principal (h2)"], ["h3", "Subtítulo (h3)"]], "p"), color: F.enum("Cor", Object.entries(TEXT_COLORS), "auto"), align: F.enum("Alinhamento", [["inherit", "Herdar"], ...POS()], "inherit") },
+  },
+  richtext: { label: "Texto rico", llm: "parágrafos com negrito, itálico, links e listas", fields: { html: F.rich("Texto") } },
+  image: { label: "Imagem", llm: "imagem com proporção fixa (e link opcional)", fields: { image: F.image("Imagem"), aspect: F.enum("Proporção", ASPECTS.filter((a) => a !== "auto"), "4:5"), link: F.link("Link", { urlOnly: true }) } },
+  button: { label: "Botão / link", llm: "botão primário, secundário, sobre imagem, ou link sublinhado (com seta)", fields: { label: F.text("Texto", { max: 40 }), url: F.link("Link", { urlOnly: true }), variant: F.enum("Estilo", [["primary", "Primário (escuro)"], ["secondary", "Secundário (contorno)"], ["onImage", "Sobre imagem (branco)"], ["link", "Link sublinhado"], ["linkArrow", "Link com seta →"]], "primary") } },
+  badge: { label: "Badge", llm: "etiqueta Novo / Exclusivo online / Sustentável", fields: { label: F.text("Texto", { max: 30 }), tone: F.enum("Cor", [["default", "Branco (Novo)"], ["brand", "Amarelo (Exclusivo online)"], ["success", "Verde (Sustentável)"]], "default") } },
+  icon: { label: "Ícone", llm: "ícone do conjunto fixo", fields: { icon: F.enum("Ícone", Object.keys(ICONS).map((k) => [k, k]), "truck"), size: F.enum("Tamanho", [[24, "24px"], [32, "32px"], [48, "48px"]], 32) } },
+  products: { label: "Produtos", llm: "cartões de produto do feed (grelha ou carrossel); usa productSource como nos blocos", fields: { productSource: F.products("Produtos"), limit: F.int("Número de produtos", 1, 24, 4), layout: F.enum("Layout", [["grid", "Grelha"], ["scroll", "Carrossel (scroll)"]], "grid"), cols: F.int("Colunas (desktop)", 1, 6, 4), card: F.enum("Cartão", [["default", "Card/Product/Default"], ["highlight", "Card/Product/Highlight"]], "default"), showBadges: F.bool("Mostrar badges", true) } },
+  divider: { label: "Linha", llm: "linha divisória #e5e5e5", fields: {} },
+  spacer: { label: "Espaço", llm: "espaço vertical da escala", fields: { size: F.enum("Altura", GAP.filter(([n]) => n > 0), 24) } },
+};
+export const PRIM_KINDS = Object.keys(PRIMS);
+const MAX_DEPTH = 4, MAX_NODES = 80, MAX_CHILDREN = 12;
+
+function nodeSchema(kind) {
+  const p = PRIMS[kind];
+  const s = { type: "object", description: `${p.label}: ${p.llm}`, properties: { kind: { const: kind }, id: { type: "string" }, ...Object.fromEntries(Object.entries(p.fields).map(([k, f]) => [k, fieldSchema(f)])) }, required: ["kind"], additionalProperties: false };
+  if (p.container) { s.properties.children = { type: "array", maxItems: MAX_CHILDREN, items: { $ref: "#/$defs/node" } }; s.required.push("children"); }
+  return s;
+}
+export const nodeDefs = () => ({ node: { anyOf: PRIM_KINDS.map(nodeSchema) } });
+
+export function walkNodes(n, fn, path = []) {
+  if (!n) return;
+  fn(n, path);
+  (n.children || []).forEach((c, i) => walkNodes(c, fn, [...path, i]));
+}
+
+export function normalizeNode(raw, depth = 0, ctx = { count: 0 }) {
+  const p = PRIMS[raw?.kind];
+  if (!p || ctx.count >= MAX_NODES) return null;
+  ctx.count++;
+  const n = { id: /^[a-z][a-z0-9-]{1,40}$/i.test(raw.id || "") && !ctx.ids?.has(raw.id) ? raw.id : newId("n"), kind: raw.kind };
+  (ctx.ids ||= new Set()).add(n.id);
+  for (const [k, f] of Object.entries(p.fields)) n[k] = normField(f, raw[k] ?? (f.kind === "products" ? undefined : f.default));
+  if (n.productSource?.mode === "rule") n.productSource.limit = n.limit;
+  if (p.container) n.children = depth < MAX_DEPTH ? (Array.isArray(raw.children) ? raw.children : []).slice(0, MAX_CHILDREN).map((c) => normalizeNode(c, depth + 1, ctx)).filter(Boolean) : [];
+  return n;
+}
+// at most one h2 per block: extra h2 become h3
+function demoteHeadings(tree) {
+  let seen = false;
+  walkNodes(tree, (n) => { if (n.kind === "text" && n.level === "h2") { if (seen) n.level = "h3"; seen = true; } });
+  return tree;
+}
+export const blankNode = (kind) => normalizeNode({ kind, children: [] });
+export const cloneTree = (t) => normalizeNode(JSON.parse(JSON.stringify(t, (k, v) => (k === "id" ? undefined : v))));
+
+// sample: hero with two buttons + highlight cards with prices (what the library blocks can't do)
+export const SAMPLE_TREE = {
+  kind: "stack", gap: 48, children: [
+    { kind: "panel", bg: "image", image: { src: "https://www.homastores.com/dw/image/v2/BFDH_PRD/on/demandware.static/-/Sites-Homa_PT-Library/default/dwd87779c6/home/shoplook/hp-shop-trend-image_solidcolor.webp?sw=1920&q=80", alt: "Sala decorada", description: "" }, overlay: "medium", padding: 80, aspect: "16:9", mobileAspect: "4:5", vpos: "bottom", hpos: "left", children: [
+      { kind: "stack", gap: 16, maxWidth: 720, children: [
+        { kind: "badge", label: "Exclusivo online", tone: "brand" },
+        { kind: "text", text: "Uma casa para todas as estações", style: "display2", level: "h2" },
+        { kind: "row", cols: 2, gap: 12, mobile: "2", valign: "center", children: [
+          { kind: "button", label: "Ver novidades", url: { url: "/novidades" }, variant: "onImage" },
+          { kind: "button", label: "Ver promoções", url: { url: "/promocoes" }, variant: "linkArrow" },
+        ] },
+      ] },
+    ] },
+    { kind: "row", cols: 3, gap: 12, mobile: "scroll", children: [1, 2, 3].map((i) => ({ kind: "panel", bg: "glass", padding: 24, children: [
+      { kind: "icon", icon: ["truck", "store", "return"][i - 1], size: 32 },
+      { kind: "text", text: ["Entrega em casa", "Levantamento em loja", "Devoluções"][i - 1], style: "h6", level: "h3" },
+      { kind: "text", text: "Texto de apoio curto.", style: "body2", color: "secondary" },
+    ] })) },
+    { kind: "products", productSource: { mode: "rule", category: "Decoração" }, limit: 4, cols: 4, card: "highlight" },
+  ],
+};
+
+// adaptation: open a library block as a composition with the same content (then edit freely)
+export function blockToComposition(b) {
+  const P = b.props, I = b.items || [];
+  const T = (text, style, o = {}) => (text ? { kind: "text", text, style, ...o } : null);
+  const BTN = (l, variant) => (l?.label ? { kind: "button", label: l.label, url: { url: l.url || "" }, variant } : null);
+  const S = (o, children) => ({ kind: "stack", ...o, children: children.filter(Boolean) });
+  const R = (o, children) => ({ kind: "row", ...o, children: children.filter(Boolean) });
+  const PANEL = (o, children) => ({ kind: "panel", ...o, children: children.filter(Boolean) });
+  const near = (w, h) => { const r = w / h; return ASPECTS.filter((a) => a !== "auto").reduce((best, a) => { const [x, y] = a.split(":").map(Number); return Math.abs(x / y - r) < Math.abs(best[1] - r) ? [a, x / y] : best; }, ["1:1", 1])[0]; };
+  let tree;
+  switch (b.type) {
+    case "section-heading": {
+      const main = S({ gap: 8, align: P.align === "center" ? "center" : "left" }, [T(P.eyebrow, "eyebrow", { color: "secondary" }), T(P.title, "display3", { level: "h2" })]);
+      const side = P.text || P.link?.label ? S({ gap: 12, align: P.align === "center" ? "center" : "left" }, [T(P.text, "body1"), BTN(P.link, "link")]) : null;
+      tree = P.align === "center" || !side ? S({ gap: 16, align: P.align === "center" ? "center" : "left" }, [main, side]) : R({ cols: 2, valign: "end", gap: 40 }, [main, side]);
+      break;
+    }
+    case "hero-banner":
+      tree = PANEL({ bg: "image", image: P.image, overlay: P.overlayStrength, padding: 80, aspect: "1920:744", mobileAspect: "2:3", vpos: "center", hpos: P.textPosition === "center" ? "center" : "left" }, [S({ gap: 16, maxWidth: 720, align: P.textPosition === "center" ? "center" : "left" }, [T(P.title, "display2", { level: "h2" }), T(P.subtitle, "body1"), BTN(P.cta, "onImage")])]);
+      break;
+    case "campaign-highlight":
+      tree = PANEL({ bg: "image", image: P.image, overlay: "medium", padding: 80, aspect: "1280:810", mobileAspect: "375:810", vpos: "bottom" }, [S({ gap: 16 }, [T(P.kicker, "caption"), T(P.title, "display1", { level: "h2" }), BTN(P.link, "linkArrow")])]);
+      break;
+    case "image-tiles":
+      tree = R({ cols: Math.min(P.columns, I.length || 1), mobile: "scroll", gap: 12 }, I.map((it) => PANEL({ bg: "image", image: it.image, overlay: "light", padding: 24, aspect: near(640, P.height), vpos: "center", hpos: "center", link: it.url }, [T(it.title, "h4", { level: "h3" }), it.linkLabel ? { kind: "button", label: it.linkLabel, url: it.url, variant: "link" } : null])));
+      break;
+    case "modular-cards":
+      tree = R({ cols: 2, gap: 12 }, I.map((it) => (it.variant === "solid"
+        ? PANEL({ bg: it.bg, padding: 80, aspect: "1:1", vpos: "center" }, [S({ gap: 16 }, [T(it.title, "display3", { level: "h3" }), T(it.text, "body1"), BTN(it.cta, "linkArrow")])])
+        : PANEL({ bg: "image", image: it.image, overlay: "medium", padding: 80, aspect: "1:1", vpos: "bottom" }, [S({ gap: 16 }, [T(it.title, "display3", { level: "h3" }), BTN(it.cta, "onImage")])]))));
+      break;
+    case "zig-zag":
+      tree = S({ gap: 48 }, I.map((it, i) => {
+        const img = { kind: "image", image: it.image, aspect: "1:1" }, txt = S({ gap: 16 }, [T(it.eyebrow, "eyebrow", { color: "secondary" }), T(it.title, "display3", { level: "h3" }), T(it.text, "body1"), BTN(it.cta, "linkArrow")]);
+        return R({ cols: 2, gap: 80, valign: "center", reverse: (i % 2 === 1) !== (P.startSide === "right") }, [img, txt]);
+      }));
+      break;
+    case "text-block":
+      tree = S({ gap: 24, align: P.align === "center" ? "center" : "left", maxWidth: P.maxWidth }, [T(P.title, "display3", { level: "h2" }), P.html ? { kind: "richtext", html: P.html } : null]);
+      break;
+    case "cta-section":
+      tree = S({ gap: 16, align: "center", maxWidth: 720 }, [T(P.title, "display3", { level: "h2" }), T(P.text, "body1"), BTN(P.cta, "primary")]);
+      break;
+    case "category-tiles":
+      tree = R({ cols: Math.min(6, I.length || 1), mobile: P.layout === "scroll" ? "scroll" : "2", gap: 12 }, I.map((it) => S({ gap: 12 }, [{ kind: "image", image: it.image, aspect: "1:1", link: it.url }, T(it.label, "body1m")])));
+      break;
+    case "benefits":
+      tree = R({ cols: I.length || 1, mobile: "2", gap: 32 }, I.map((it) => S({ gap: 8, align: "center" }, [{ kind: "icon", icon: it.icon, size: 32 }, T(it.title, "h6", { level: "h3" }), T(it.text, "body2", { color: "secondary" })])));
+      break;
+    case "product-grid":
+      tree = S({ gap: 32 }, [T(P.title, "display3", { level: "h2" }), { kind: "products", productSource: P.productSource, limit: P.limit, cols: 4, showBadges: P.showBadges }, BTN(P.viewAll, "secondary")]);
+      break;
+    case "product-carousel":
+      tree = S({ gap: 32 }, [T(P.title, "display3", { level: "h2" }), { kind: "products", productSource: P.productSource, limit: P.limit, layout: "scroll", showBadges: P.showBadges }]);
+      break;
+    case "spacer":
+      tree = S({ gap: 0 }, [{ kind: "spacer", size: Math.min(80, P.size) }]);
+      break;
+    default:
+      return b;
+  }
+  const common = Object.fromEntries(Object.keys(COMMON).map((k) => [k, P[k]]));
+  return normalizeBlock({ id: b.id, type: "composition", props: { ...common, tree } });
 }
 
 // ---------------------------------------------------------------------------- escaping, links, rich text
@@ -637,11 +825,143 @@ function renderBlockInner(b, ctx) {
       const arrows = ctx.caps?.js && list.length > 4 ? `<button type="button" class="arr arr-l hm" aria-label="Anterior" data-hpb-dir="-1"><svg viewBox="0 0 16 16"><path d="M10 3 5 8l5 5"/></svg></button><button type="button" class="arr arr-r hm" aria-label="Seguinte" data-hpb-dir="1"><svg viewBox="0 0 16 16"><path d="m6 3 5 5-5 5"/></svg></button>` : "";
       return `${P.title ? `<div class="car-h"><h2 class="t-d3">${esc(P.title)}</h2></div>` : ""}<div class="car-w"><div class="car">${list.map((p) => productCard(p, market, P.showBadges)).join("") || (preview ? `<div class="ph" style="min-height:120px">Sem produtos — escolhe produtos ou ajusta a regra</div>` : "")}</div>${arrows}</div>`;
     }
+    case "composition":
+      return renderNode(b.props.tree, ctx, b);
     case "spacer":
       return "";
     default:
       return "";
   }
+}
+
+// ---------------------------------------------------------------------------- composition render (primitives)
+const PRIM_CSS = `
+@media (min-width:768px){& .c-row.rv{direction:rtl}& .c-row.rv>*{direction:ltr}}
+& .c-stack .rt,& .c-panel .rt{width:100%}
+& .c-pc .rt p+p,& .c-stack .rt p+p,& .c-stack .rt p+ul,& .c-stack .rt ul+p,& .c-stack .rt p+ol,& .c-stack .rt ol+p{margin-top:16px}
+& .c-stack .rt ul,& .c-stack .rt ol,& .c-pc .rt ul,& .c-pc .rt ol{padding-left:24px}
+& .a-center .rt ul,& .a-center .rt ol,& .hp-center .rt ul,& .hp-center .rt ol{list-style-position:inside;padding-left:0}
+& .c-stack .rt a,& .c-pc .rt a{text-decoration:underline;text-underline-offset:3px}
+& .c-stack .rt strong,& .c-stack .rt b,& .c-pc .rt strong,& .c-pc .rt b{font-weight:600}
+& .c-row{display:grid;min-width:0}
+& .c-stack{display:flex;flex-direction:column;min-width:0}
+& .c-stack.a-left{align-items:flex-start;text-align:left}
+& .c-stack.a-center{align-items:center;text-align:center;margin-left:auto;margin-right:auto}
+& .c-stack.a-right{align-items:flex-end;text-align:right;margin-left:auto}
+& .c-stack.mw480{max-width:480px;width:100%}& .c-stack.mw720{max-width:720px;width:100%}& .c-stack.mw960{max-width:960px;width:100%}& .c-stack.mw1200{max-width:1200px;width:100%}
+& .c-panel{position:relative;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+& .c-panel>img,& .c-panel>.ph{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+& .c-ov{position:absolute;inset:0;z-index:1;pointer-events:none;background:linear-gradient(0deg,rgba(0,0,0,var(--o)) 0%,rgba(0,0,0,calc(var(--o) * .35)) 60%,rgba(0,0,0,0) 100%)}
+& .c-ov.light{--o:.35}& .c-ov.medium{--o:.55}& .c-ov.strong{--o:.75}
+& .c-pl{position:absolute;inset:0;z-index:2}
+& .c-pc{position:relative;z-index:3;display:flex;flex-direction:column;flex:1;width:100%}
+& .c-panel.lk .c-pc{pointer-events:none}& .c-panel.lk .c-pc a{pointer-events:auto}
+& .vp-top>.c-pc{justify-content:flex-start}& .vp-center>.c-pc{justify-content:center}& .vp-bottom>.c-pc{justify-content:flex-end}
+& .hp-left>.c-pc{align-items:flex-start;text-align:left}& .hp-center>.c-pc{align-items:center;text-align:center}& .hp-right>.c-pc{align-items:flex-end;text-align:right}
+& .p-white{background:#ffffff}& .p-beige{background:#f3f1ea}& .p-sand{background:#dfdbd2}& .p-surface{background:#f3f3f3}
+& .p-brown{background:#583d3e;color:#ffffff}& .p-dark{background:#181818;color:#ffffff}& .p-image{background:#181818;color:#ffffff}
+& .p-glass{background:rgba(255,255,255,.6);border:1px solid #ffffff;backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);border-radius:4px}
+& .t-h5{font-size:22px;line-height:34px;font-weight:500}
+& .t-subm{font-size:18px;line-height:28px;font-weight:500}
+& .t-sm{font-size:12px;line-height:18px}
+& .fw5{font-weight:500}& .fw6{font-weight:600}
+& .tc-text{color:#181818}& .tc-headline{color:#000000}& .tc-secondary{color:#444444}& .tc-white{color:#ffffff}& .tc-brand{color:#daaa00}
+& .dk .tc-secondary{color:#ffffff}
+& .ta-left{text-align:left}& .ta-center{text-align:center}& .ta-right{text-align:right}
+& .c-img{display:block;width:100%;overflow:hidden;background:#f8f6f4}
+& .c-img img{width:100%;height:100%;object-fit:cover}
+& .c-ic{fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+& .c-ic.s24{width:24px;height:24px}& .c-ic.s32{width:32px;height:32px}& .c-ic.s48{width:48px;height:48px}
+& .c-hr{border:0;border-top:1px solid #e5e5e5;margin:0;width:100%}
+& .c-prod{display:grid;gap:32px 12px;width:100%}
+& .c-prod.sc{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;gap:12px}& .c-prod.sc::-webkit-scrollbar{display:none}
+& .c-prod.sc>.pc{flex:0 0 285px;scroll-snap-align:start}
+& .pc-hl .pc-n{font-weight:600}& .pc-hl .pc-d{font-size:14px;line-height:24px}
+& .c-row>.c-text,& .c-row>*{min-width:0}
+@media (max-width:767px){
+& .t-h5{font-size:20px;line-height:32px}& .t-subm{font-size:14px;line-height:24px}
+& .c-prod{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:24px 12px}
+& .c-prod.sc>.pc{flex-basis:160px}
+& .c-row.m1{grid-template-columns:minmax(0,1fr)!important}
+& .c-row.m2{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+& .c-row.msc{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none}& .c-row.msc::-webkit-scrollbar{display:none}
+& .c-row.msc>*{flex:0 0 78%;scroll-snap-align:start}
+}`;
+const ASPECT_CSS = (a) => (a && a !== "auto" ? `aspect-ratio:${a.replace(":", "/")}` : "aspect-ratio:auto");
+const MOBILE_PAD = { 80: 24, 48: 24, 40: 24, 36: 24, 32: 24 };
+const slotKey = (b, n) => `${b.id}:${n.id}`;
+const visibleSlot = (key, limit, products = {}) => (products[key] || []).filter((p) => p && !p.missing && !p.oos).slice(0, limit || 8);
+
+// every place that shows feed products: library product blocks + "products" nodes inside compositions
+export function productSlots(el) {
+  const out = [];
+  for (const b of el.blocks || []) {
+    if (PRODUCT_BLOCKS.includes(b.type)) out.push({ key: b.id, blockId: b.id, source: b.props.productSource || {}, limit: b.props.limit });
+    if (b.type === "composition") walkNodes(b.props.tree, (n) => { if (n.kind === "products") out.push({ key: slotKey(b, n), blockId: b.id, nodeId: n.id, source: n.productSource || {}, limit: n.limit }); });
+  }
+  return out;
+}
+
+function renderNode(n, ctx, b) {
+  const kids = () => (n.children || []).map((c) => renderNode(c, ctx, b)).join("");
+  const { market, preview } = ctx;
+  switch (n.kind) {
+    case "row": return `<div class="c-row n-${n.id} m${n.mobile === "scroll" ? "sc" : n.mobile}${n.reverse ? " rv" : ""}">${kids()}</div>`;
+    case "stack": return `<div class="c-stack n-${n.id} a-${n.align}${n.maxWidth ? ` mw${n.maxWidth}` : ""}">${kids()}</div>`;
+    case "panel": {
+      const href = n.link?.url ? hrefOf(n.link, market) : "";
+      const bgImg = n.bg === "image" ? img(n.image, { w: 1600, h: 900, preview }) : "";
+      const label = (() => { let t = ""; walkNodes(n, (x) => { if (!t && x.kind === "text") t = x.text; }); return t; })();
+      return `<div class="c-panel n-${n.id} p-${n.bg} vp-${n.vpos} hp-${n.hpos}${DARK_PANELS.has(n.bg) ? " dk" : ""}${href ? " lk" : ""}">${bgImg}${n.bg === "image" && n.overlay !== "none" ? `<span class="c-ov ${n.overlay}"></span>` : ""}${href ? `<a class="c-pl" href="${esc(href)}" aria-label="${esc(label || "Ver mais")}"></a>` : ""}<div class="c-pc">${kids()}</div></div>`;
+    }
+    case "text": {
+      if (!n.text) return "";
+      const tag = ["h2", "h3"].includes(n.level) ? n.level : "p";
+      const cls = [TEXT_STYLES[n.style]?.[1] || "t-b1", n.color !== "auto" ? `tc-${n.color}` : "", n.align !== "inherit" ? `ta-${n.align}` : ""].filter(Boolean).join(" ");
+      return `<${tag} class="${cls}">${esc(n.text).replace(/\n/g, "<br>")}</${tag}>`;
+    }
+    case "richtext": return n.html ? `<div class="rt t-b1">${sanitizeRich(n.html, market).html}</div>` : "";
+    case "image": {
+      const [w, h] = n.aspect.split(":").map(Number);
+      const im = img(n.image, { w: w * 100 > 4000 ? w : w * 100, h: w * 100 > 4000 ? h : h * 100, preview });
+      const href = n.link?.url ? hrefOf(n.link, market) : "";
+      return href ? `<a class="c-img n-${n.id}" href="${esc(href)}">${im}</a>` : `<span class="c-img n-${n.id}">${im}</span>`;
+    }
+    case "button": {
+      const cls = { primary: "btn btn-p", secondary: "btn btn-s", onImage: "btn btn-i", link: "lnk", linkArrow: "lnk" }[n.variant] || "btn btn-p";
+      return button({ label: n.label, url: n.url?.url }, cls, market, n.variant === "linkArrow");
+    }
+    case "badge": return n.label ? badgeHtml({ label: n.label, tone: n.tone === "default" ? "" : n.tone }) : "";
+    case "icon": return `<svg class="c-ic s${n.size}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n.icon] || ""}</svg>`;
+    case "products": {
+      const list = visibleSlot(slotKey(b, n), n.limit, ctx.products);
+      const cards = list.map((p) => productCard(p, market, n.showBadges).replace('class="pc"', `class="pc${n.card === "highlight" ? " pc-hl" : ""}"`)).join("");
+      return `<div class="c-prod n-${n.id}${n.layout === "scroll" ? " sc" : ""}">${cards || (preview ? `<div class="ph" style="grid-column:1/-1;min-height:120px">Sem produtos — escolhe produtos ou ajusta a regra</div>` : "")}</div>`;
+    }
+    case "divider": return `<hr class="c-hr">`;
+    case "spacer": return `<div class="c-sp n-${n.id}"></div>`;
+    default: return "";
+  }
+}
+
+function nodeCss(n) {
+  const s = `& .n-${n.id}`, out = [];
+  if (n.kind === "row") {
+    const cols = n.cols === 2 && n.split !== "equal" ? (n.split === "2-1" ? "minmax(0,2fr) minmax(0,1fr)" : "minmax(0,1fr) minmax(0,2fr)") : `repeat(${n.cols},minmax(0,1fr))`;
+    out.push(`${s}{grid-template-columns:${cols};gap:${n.gap}px;align-items:${n.valign === "start" ? "start" : n.valign === "end" ? "end" : n.valign}}`);
+    if (n.mobile === "scroll") out.push(`@media (max-width:767px){${s}{gap:12px}}`);
+    else if (n.gap > 24) out.push(`@media (max-width:767px){${s}{gap:24px}}`);
+  }
+  if (n.kind === "stack") out.push(`${s}{gap:${n.gap}px}${n.gap > 32 ? `@media (max-width:767px){${s}{gap:${MOBILE_SPACE[n.gap] ?? 32}px}}` : ""}`);
+  if (n.kind === "panel") {
+    out.push(`${s}{${ASPECT_CSS(n.aspect)}}${s}>.c-pc{padding:${n.padding}px}`);
+    // mobileAspect "auto" = keep the desktop proportion
+    out.push(`@media (max-width:767px){${n.mobileAspect !== "auto" ? `${s}{${ASPECT_CSS(n.mobileAspect)}}` : ""}${s}>.c-pc{padding:${MOBILE_PAD[n.padding] ?? n.padding}px}}`);
+  }
+  if (n.kind === "image") out.push(`${s}{${ASPECT_CSS(n.aspect)}}`);
+  if (n.kind === "products" && n.layout !== "scroll") out.push(`${s}{grid-template-columns:repeat(${n.cols},minmax(0,1fr))}`);
+  if (n.kind === "spacer") out.push(`${s}{height:${n.size}px}@media (max-width:767px){${s}{height:${MOBILE_SPACE[n.size] ?? n.size}px}}`);
+  return out.join("");
 }
 
 // per-block rules that depend on props (no inline styles: they may be stripped by Page Designer)
@@ -651,6 +971,7 @@ function blockCss(b) {
   if (b.type === "image-tiles") out.push(`${s} .tiles{grid-template-columns:repeat(${Math.max(1, Math.min(P.columns, (b.items || []).length || 1))},minmax(0,1fr))}${s} .tile{height:${P.height}px}`);
   if (b.type === "category-tiles" && P.layout !== "scroll") out.push(`${s} .cat{grid-template-columns:repeat(${Math.max(1, Math.min(6, (b.items || []).length || 1))},minmax(0,1fr))}`);
   if (b.type === "benefits") out.push(`${s} .bn{grid-template-columns:repeat(${Math.max(1, (b.items || []).length)},minmax(0,1fr))}`);
+  if (b.type === "composition") walkNodes(P.tree, (n) => out.push(nodeCss(n)));
   if (b.type === "spacer") out.push(`${s}{height:${P.size}px}@media (max-width:767px){${s}{height:${MOBILE_SPACE[P.size] ?? P.size}px}}`);
   if (P.background === "image" && isHttpsUrl(P.backgroundImage?.src)) out.push(`${s}{background-image:url("${P.backgroundImage.src.replace(/["\\()]/g, encodeURIComponent).replace(/&/g, "\\26 ")}")}`); // "&" is the root placeholder → CSS escape
   return out.join("");
@@ -710,9 +1031,9 @@ export function renderElement(el, { products = {}, preview = false, caps = { js:
   const root = `#hpb-${eid}`;
   const blocks = (el.blocks || []).filter((b) => BLOCKS[b.type]);
   const types = [...new Set(blocks.map((b) => b.type))];
-  const needsCard = types.some((t) => PRODUCT_BLOCKS.includes(t));
+  const needsCard = productSlots({ blocks }).length > 0;
   const mw = [...new Set(blocks.filter((b) => b.type === "text-block").map((b) => b.props.maxWidth))].map((w) => `& .mw${w}{max-width:${w}px}`).join("");
-  const css = tokenVars(minCss([BASE_CSS, needsCard ? CARD_CSS : "", ...types.map((t) => BLOCK_CSS[t] || ""), mw, spacingCss(blocks), ...blocks.map(blockCss)].join("\n"))).replaceAll("&", root);
+  const css = tokenVars(minCss([BASE_CSS, needsCard ? CARD_CSS : "", ...types.map((t) => (t === "composition" ? PRIM_CSS : BLOCK_CSS[t] || "")), mw, spacingCss(blocks), ...blocks.map(blockCss)].join("\n"))).replaceAll("&", root);
   const body = blocks.map((b, i) => {
     const inner = renderBlockInner(b, { market, preview, products, caps, index: i });
     const anchor = b.props.anchor ? ` id="${esc(b.props.anchor)}"` : "";
@@ -770,16 +1091,27 @@ export function checkElement(el, products = {}, html = "", caps = { js: false })
         }
       });
     }
-    if (PRODUCT_BLOCKS.includes(b.type)) {
-      const list = products[b.id] || [];
-      const miss = list.filter((p) => p.missing).map((p) => p.id), oos = list.filter((p) => p.oos).map((p) => p.id);
-      if (miss.length) errors.push(`${FIELD_PATH(b, i)}: produtos fora do feed ${miss.join(", ")}`);
-      if (oos.length) warnings.push(`${FIELD_PATH(b, i)}: sem stock (não aparecem) ${oos.join(", ")}`);
-      const vis = visibleProducts(b, products).length;
-      if (!vis) errors.push(`${FIELD_PATH(b, i)}: nenhum produto para mostrar`);
-      else if (vis < (P.limit || 0) && P.productSource?.mode === "rule") warnings.push(`${FIELD_PATH(b, i)}: só ${vis} de ${P.limit} produtos correspondem à regra`);
+    if (b.type === "composition") {
+      walkNodes(P.tree, (n) => {
+        const where = `${FIELD_PATH(b, i)} · ${PRIMS[n.kind].label}${n.text ? ` “${n.text.slice(0, 30)}”` : n.label ? ` “${n.label}”` : ""}`;
+        if (n.kind === "image" || (n.kind === "panel" && n.bg === "image")) checkImg(n.image, where);
+        if (n.kind === "button" && n.label) checkLink({ label: n.label, url: n.url?.url }, where);
+        if ((n.kind === "panel" || n.kind === "image") && n.link?.url) checkLink(n.link, where);
+      });
+      if (!P.template) warnings.push(`${FIELD_PATH(b, i)}: composição nova (ainda não é um bloco guardado) — se ficar bem, guarda-a como bloco`);
     }
   });
+  for (const sl of productSlots(el)) {
+    const i = el.blocks.findIndex((x) => x.id === sl.blockId), b = el.blocks[i];
+    const where = FIELD_PATH(b, i, sl.nodeId ? "Produtos" : "");
+    const list = products[sl.key] || [];
+    const miss = list.filter((p) => p.missing).map((p) => p.id), oos = list.filter((p) => p.oos).map((p) => p.id);
+    if (miss.length) errors.push(`${where}: produtos fora do feed ${miss.join(", ")}`);
+    if (oos.length) warnings.push(`${where}: sem stock (não aparecem) ${oos.join(", ")}`);
+    const vis = visibleSlot(sl.key, sl.limit, products).length;
+    if (!vis) errors.push(`${where}: nenhum produto para mostrar`);
+    else if (vis < (sl.limit || 0) && sl.source?.mode === "rule") warnings.push(`${where}: só ${vis} de ${sl.limit} produtos correspondem à regra`);
+  }
   if (html) {
     if ((html.match(/<h1[\s>]/gi) || []).length) errors.push("O HTML tem um <h1> (a página já tem um).");
     if (!caps?.js && /<script/i.test(html)) errors.push("O HTML tem <script> (o teste de capacidades ainda não confirmou que corre).");
@@ -818,19 +1150,27 @@ export function diffElements(a, b) {
 }
 
 // ---------------------------------------------------------------------------- LLM-facing library description
+const fieldLine = (k, f) => {
+  if (f.kind === "enum") return `${k} (${f.options.map(([v]) => JSON.stringify(v)).join("|")})`;
+  if (f.kind === "int") return `${k} (${f.min}–${f.max})`;
+  if (f.kind === "products") return `${k} (productSource)`;
+  if (f.kind === "link" && f.urlOnly) return `${k} ({url})`;
+  return `${k}${f.required ? "*" : ""} (${f.kind})`;
+};
 export function libraryForPrompt() {
-  const fieldLine = (k, f) => {
-    if (f.kind === "enum") return `${k} (${f.options.map(([v]) => JSON.stringify(v)).join("|")})`;
-    if (f.kind === "int") return `${k} (${f.min}–${f.max})`;
-    if (f.kind === "products") return `${k} (productSource)`;
-    return `${k}${f.required ? "*" : ""} (${f.kind})`;
-  };
   return BLOCK_TYPES.map((t) => {
     const d = BLOCKS[t];
-    const props = Object.entries(d.props).map(([k, f]) => fieldLine(k, f)).join(", ") || "—";
+    const props = Object.entries(d.props).filter(([, f]) => !f.hidden || t === "composition").map(([k, f]) => fieldLine(k, f)).join(", ") || "—";
     const items = d.items ? ` · items[${d.items.min}–${d.items.max}]: ${Object.entries(d.items.fields).map(([k, f]) => fieldLine(k, f)).join(", ")}` : "";
     return `- ${t} — ${d.llm} Props: ${props}${items}`;
   }).join("\n");
+}
+export function primitivesForPrompt() {
+  return PRIM_KINDS.map((k) => {
+    const p = PRIMS[k];
+    const fields = Object.entries(p.fields).map(([f, d]) => fieldLine(f, d)).join(", ") || "—";
+    return `- ${k}${p.container ? " (contentor, com children)" : ""} — ${p.llm}. Campos: ${fields}`;
+  }).join("\n") + `\nEstilos de texto (style): ${Object.entries(TEXT_STYLES).map(([k, [l]]) => `${k} = ${l}`).join("; ")}.`;
 }
 
 // ---------------------------------------------------------------------------- preview page (editor, gallery, export panel)
