@@ -22,7 +22,7 @@ export async function importFromAkeneo(id, { deadline = Date.now() + 12 * 60 * 1
     await applyAuto(id);
     const m = await db.get(PK.job(id));
     m.status = "ready";
-    m.import = { ...(m.import || {}), phase: "concluído", done: res.products, models: res.models, truncated: res.truncated, finishedAt: new Date().toISOString() };
+    m.import = { ...(m.import || {}), phase: "concluído", done: res.products, models: res.models, truncated: res.truncated, skipped: res.skipped, finishedAt: new Date().toISOString() };
     await refreshMeta(id, m);
     return m.import;
   } catch (e) {

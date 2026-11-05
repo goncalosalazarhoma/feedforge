@@ -78,7 +78,7 @@ route("POST", "/akeneo/test", async () => {
 route("POST", "/akeneo/import", async ({ body, req }) => {
   if (akeneoMissing().length) throw httpError(400, `Faltam variáveis de ambiente no Netlify: ${akeneoMissing().join(", ")}`);
   const id = uid();
-  const filters = { families: body.families || [], categories: body.categories || "", skus: body.skus || "", incompleteOnly: !!body.incompleteOnly, enabledOnly: !!body.enabledOnly, updatedSince: body.updatedSince || "", includeModels: body.includeModels !== false, limit: Number(body.limit) || 1000 };
+  const filters = { families: body.families || [], categories: body.categories || "", skus: body.skus || "", incompleteOnly: !!body.incompleteOnly, completeness: body.completeness?.op ? { op: body.completeness.op, value: Number(body.completeness.value) || 0, value2: Number(body.completeness.value2) || 0, locales: body.completeness.locales || [], all: !!body.completeness.all } : null, enabledOnly: !!body.enabledOnly, updatedSince: body.updatedSince || "", includeModels: body.includeModels !== false, limit: Number(body.limit) || 1000 };
   await db.set(PK.rows(id), { headers: ["sku"], rows: [] });
   await db.set(PK.results(id), {});
   await db.set(PK.job(id), { id, name: body.name || `Akeneo ${new Date().toISOString().slice(0, 10)}`, createdAt: new Date().toISOString(), status: "importing", source: "akeneo", count: 0, import: { phase: "a iniciar", done: 0, filters } });
