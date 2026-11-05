@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shop the Look · teste do código exportado</title>
+<style>
+/* Simula o storefront: o homastores.com já carrega a Gilroy. Isto NÃO faz parte do código exportado. */
+@font-face{font-family:Gilroy;font-weight:400;src:url("https://www.homastores.com/mobify/bundle/106/static/fonts/gilroy/GilroyRegular.woff2") format("woff2")}
+@font-face{font-family:Gilroy;font-weight:500;src:url("https://www.homastores.com/mobify/bundle/106/static/fonts/gilroy/GilroyMedium.woff2") format("woff2")}
+@font-face{font-family:Gilroy;font-weight:600;src:url("https://www.homastores.com/mobify/bundle/106/static/fonts/gilroy/GilroySemiBold.woff2") format("woff2")}
+body{margin:0;background:#fff}
+</style>
+</head>
+<body>
+<!-- ===== Daqui para baixo: código exatamente como o "Gerar código" do FeedForge o produz ===== -->
+<!-- hôma · Shop the Look · HP · Outono/Inverno (teste) · gerado pelo FeedForge (exemplo) -->
+<!-- CSS + JS do widget: basta uma vez por página (se houver vários Shop the Look na mesma página, os seguintes podem ficar só com a <section> e o JSON) -->
+<style>
+/* hôma · Shop the Look widget (storefront + FeedForge preview). Gilroy comes from the storefront. */
+/* ================= hôma Shop the Look widget ================= */
+.hstl{
+  --hstl-text:#181818; --hstl-headline:#000; --hstl-secondary:#444;
+  --hstl-block:#dfdbd2;          /* Color Block (configurável) */
+  --hstl-list-bg:#f3f1ea;        /* beige/beige-70 */
+  --hstl-card-bg:#f8f6f4;
+  --hstl-brand:#daaa00; --hstl-success:#194e31; --hstl-danger:#8e030f; --hstl-border:#e5e5e5;
+  --hstl-arrow:#aeaeae;
+  --hstl-gutter:40px;
+  font-family:Gilroy,"Helvetica Neue",Arial,sans-serif; color:var(--hstl-text);
+  display:flex; flex-direction:column; gap:32px; width:100%; box-sizing:border-box;
+}
+.hstl *,.hstl *::before,.hstl *::after{box-sizing:border-box}
+.hstl__head{padding:0 var(--hstl-gutter);max-width:1520px}
+.hstl__eyebrow{margin:0;font-weight:500;font-size:18px;line-height:28px;text-transform:uppercase}
+.hstl__title{margin:0;font-weight:500;font-size:34px;line-height:52px;letter-spacing:-.02em;color:var(--hstl-headline)}
+
+.hstl__products{display:flex;flex-direction:column}
+.hstl__inspo{display:flex;width:100%}
+.hstl__stage{position:relative;flex:1 1 auto;aspect-ratio:1475/1080;overflow:hidden;background:#e9e5dd}
+.hstl__stage>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+
+/* Pins */
+.hstl__pin{position:absolute;z-index:2;width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;
+  border:0;padding:0;cursor:pointer;background:rgba(255,255,255,.92);box-shadow:0 2px 8px rgba(0,0,0,.25);
+  display:grid;place-items:center;transition:transform .15s ease,background .15s ease}
+.hstl__pin::after{content:"";width:8px;height:8px;border-radius:50%;background:var(--hstl-text);transition:background .15s}
+.hstl__pin:hover{transform:scale(1.12)}
+.hstl__pin:focus-visible{outline:2px solid #fff;outline-offset:3px}
+.hstl__pin[aria-pressed="true"]{background:var(--hstl-text);box-shadow:0 0 0 2px #fff,0 2px 10px rgba(0,0,0,.3)}
+.hstl__pin[aria-pressed="true"]::after{background:#fff}
+.hstl__pin[aria-pressed="true"]::before{content:"";position:absolute;inset:-9px;border-radius:50%;border:1.5px solid rgba(255,255,255,.65);animation:hstl-pulse 1.8s ease-out infinite}
+@keyframes hstl-pulse{from{transform:scale(.7);opacity:1}to{transform:scale(1.25);opacity:0}}
+@media (prefers-reduced-motion:reduce){.hstl__pin[aria-pressed="true"]::before{animation:none}}
+
+/* Popover (glass card from Figma "Product card") */
+.hstl__pop{position:absolute;z-index:3;width:248px;padding:20px;border-radius:4px;border:1px solid #fff;
+  background:rgba(255,255,255,.6);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);
+  display:flex;flex-direction:column;gap:4px;font-size:16px;line-height:28px;color:var(--hstl-text);
+  text-decoration:none;opacity:0;transform:translateY(4px);transition:opacity .18s,transform .18s;pointer-events:none}
+.hstl__pop.is-open{opacity:1;transform:none;pointer-events:auto}
+.hstl__pop-name{font-weight:400;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.hstl__pop-price{font-weight:500;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.hstl__pop-cta{font-weight:500;text-decoration:underline;line-height:24px}
+
+/* CTA on image */
+.hstl__cta--below{display:none;position:static!important;transform:none!important;color:var(--hstl-text)!important;text-shadow:none!important;margin:24px 16px 0;text-align:center}
+.hstl__cta{position:absolute;z-index:1;transform:translate(-50%,-50%);color:#fff;font-weight:500;font-size:16px;line-height:24px;
+  text-decoration:underline;text-underline-offset:3px;white-space:nowrap;text-shadow:0 1px 6px rgba(0,0,0,.35)}
+
+/* Color Block + highlight card */
+.hstl__block{flex:0 0 auto;width:23.18%;min-width:300px;background:var(--hstl-block);display:flex;align-items:center;justify-content:center;padding:40px clamp(24px,4.2vw,80px)}
+.hstl__hl{width:100%;max-width:285px;display:flex;flex-direction:column;gap:8px;color:inherit;text-decoration:none}
+.hstl__hl-img{aspect-ratio:285/380;background:var(--hstl-card-bg);position:relative;overflow:hidden}
+.hstl__hl-img img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;transition:opacity .2s}
+.hstl__hl-name{font-weight:600;font-size:16px;line-height:28px}
+.hstl__hl-desc{font-size:14px;line-height:24px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* Prices + badges */
+.hstl__price{display:flex;gap:8px;align-items:center;white-space:nowrap}
+.hstl__price b{font-weight:600;font-size:16px;line-height:28px}
+.hstl__price s{font-size:14px;line-height:24px;color:var(--hstl-secondary)}
+.hstl__price em,.hstl__price s{font-style:normal}
+.hstl__price em{font-size:14px;line-height:24px;color:var(--hstl-danger)}
+.hstl__badges{position:absolute;left:8px;bottom:8px;display:flex;flex-direction:column;gap:4px;align-items:flex-start}
+.hstl__badge{font-size:12px;line-height:18px;padding:2px 8px;border-radius:4px;background:#fff;border:1px solid var(--hstl-border);color:var(--hstl-text)}
+.hstl__badge--brand{background:var(--hstl-brand);border-color:var(--hstl-brand);color:#101010}
+.hstl__badge--success{background:var(--hstl-success);border-color:var(--hstl-success);color:#fff}
+
+/* Products list / carousel */
+.hstl__list{position:relative;background:var(--hstl-list-bg);padding:118px var(--hstl-gutter)}
+.hstl__track{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;scroll-behavior:smooth}
+.hstl__track::-webkit-scrollbar{display:none}
+.hstl__card{flex:0 0 285px;min-width:0;scroll-snap-align:start;display:flex;flex-direction:column;gap:8px;color:inherit;text-decoration:none;cursor:pointer}
+.hstl__card-img{position:relative;aspect-ratio:285/380;background:var(--hstl-card-bg);overflow:hidden}
+.hstl__card-img img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:transform .4s}
+.hstl__card:hover .hstl__card-img img{transform:scale(1.03)}
+.hstl__card-img::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--hstl-text);transform:scaleX(0);transform-origin:left;transition:transform .25s}
+.hstl__card.is-active .hstl__card-img::after{transform:scaleX(1)}
+.hstl__card-name{font-weight:500;font-size:16px;line-height:28px;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+.hstl__card-desc{font-size:12px;line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hstl__card .hstl__price b{font-weight:500}
+.hstl__arrow{position:absolute;top:50%;transform:translateY(-50%);width:42px;height:42px;border-radius:43px;border:0;
+  background:var(--hstl-arrow);display:grid;place-items:center;cursor:pointer;z-index:2;transition:opacity .2s}
+.hstl__arrow[disabled]{opacity:0;pointer-events:none}
+.hstl__arrow--prev{left:32px}.hstl__arrow--next{right:24px}
+.hstl__arrow svg{width:16px;height:16px}
+
+/* Mobile (Figma 375) */
+@media (max-width:767px){
+  .hstl{--hstl-gutter:16px;gap:32px}
+  .hstl__eyebrow{font-size:14px;line-height:24px}
+  .hstl__title{font-size:22px;line-height:32px;letter-spacing:-.01em}
+  .hstl__inspo{flex-direction:column}
+  .hstl__stage{aspect-ratio:375/396}
+  .hstl__block{display:none}
+  .hstl__pop{width:200px;padding:12px 14px;font-size:14px;line-height:22px}
+  .hstl__pop .hstl__price b{font-size:14px;line-height:22px}
+  .hstl__stage .hstl__cta{display:none}
+  .hstl__cta--below{display:block}
+  .hstl__list{padding:80px 0 80px 20px}
+  .hstl__card{flex-basis:160px}
+  .hstl__card-desc{font-size:14px;line-height:24px}
+  .hstl__arrow--prev{left:16px}.hstl__arrow--next{right:16px}
+}
+</style>
+<script>
+/* hôma · Shop the Look widget — vanilla, no dependencies.
+   API: window.HomaShopTheLook.mount(sectionEl, config) — safe to call again (re-renders).
+   Exported snippets: <section class="hstl" data-stl-id="ID"> + <script type="application/json" data-stl-config="ID"> are mounted automatically.
+   Products flagged missing / oos (not in the feed / out of stock) are hidden. */
+(function(){
+  const CHEV = d => `<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="${d}" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+  function mount(root, cfg){
+    const fmt = new Intl.NumberFormat(cfg.locale || "pt-PT", {style:"currency", currency:cfg.currency || "EUR"});
+    if (root.__hstlRO) root.__hstlRO.disconnect(); // re-mount (editor live preview)
+    const all = cfg.products || [];
+    const P = all.filter(p => !p.missing && !p.oos);
+    cfg = { ...cfg, image: cfg.image || { src: "", alt: "" } };
+    if (cfg.blockColor) root.style.setProperty("--hstl-block", cfg.blockColor);
+
+    const price = p => {
+      const sale = p.listPrice && p.listPrice > p.price;
+      return `<span class="hstl__price"><b>${fmt.format(p.price)}</b>${sale ? `<s>${fmt.format(p.listPrice)}</s><em>-${Math.round((1-p.price/p.listPrice)*100)}%</em>` : ""}</span>`;
+    };
+    const badges = p => (p.badges||[]).length ? `<span class="hstl__badges">${p.badges.map(b=>`<span class="hstl__badge${b.tone?` hstl__badge--${b.tone}`:""}">${esc(b.label)}</span>`).join("")}</span>` : "";
+
+    root.innerHTML = `
+      <header class="hstl__head">
+        ${cfg.eyebrow ? `<p class="hstl__eyebrow">${esc(cfg.eyebrow)}</p>` : ""}
+        ${cfg.title ? `<h2 class="hstl__title">${esc(cfg.title)}</h2>` : ""}
+      </header>
+      <div class="hstl__products">
+      <div class="hstl__inspo">
+        <div class="hstl__stage">
+          <img src="${esc(cfg.image.src)}" alt="${esc(cfg.image.alt)}" loading="lazy">
+          ${P.map((p,i)=> p.pin && p.pin.show!==false ? `<button class="hstl__pin" type="button" data-i="${i}" style="left:${p.pin.x}%;top:${p.pin.y}%" aria-pressed="false" aria-label="${esc(p.name)}"></button>` : "").join("")}
+          <a class="hstl__pop" href="#" aria-live="polite"><span class="hstl__pop-name"></span><span class="hstl__pop-price"></span><span class="hstl__pop-cta">${esc(cfg.popoverCta || "Ver produto")}</span></a>
+          ${cfg.cta && cfg.cta.show ? `<a class="hstl__cta" href="${esc(cfg.cta.url)}" style="left:${cfg.cta.x}%;top:${cfg.cta.y}%">${esc(cfg.cta.text)}</a>` : ""}
+        </div>
+        <aside class="hstl__block"><a class="hstl__hl" href="#"><span class="hstl__hl-img"><img alt=""></span>
+          <span><span class="hstl__hl-name"></span><span class="hstl__hl-desc" style="display:block"></span><span class="hstl__hl-price"></span></span></a></aside>
+      </div>
+      <div class="hstl__list">
+        <button class="hstl__arrow hstl__arrow--prev" type="button" aria-label="Anterior">${CHEV("M10 3 5 8l5 5")}</button>
+        <div class="hstl__track" role="list">
+          ${P.map((p,i)=>`<a class="hstl__card" role="listitem" href="${esc(p.url)}" data-i="${i}">
+            <span class="hstl__card-img"><img src="${esc(p.image)}" alt="" loading="lazy">${badges(p)}</span>
+            <span><span class="hstl__card-name">${esc(p.name)}</span><span class="hstl__card-desc" style="display:block">${esc(p.description||"")}</span>${price(p)}</span></a>`).join("")}
+        </div>
+        <button class="hstl__arrow hstl__arrow--next" type="button" aria-label="Seguinte">${CHEV("m6 3 5 5-5 5")}</button>
+        ${cfg.cta && cfg.cta.show ? `<a class="hstl__cta hstl__cta--below" href="${esc(cfg.cta.url)}">${esc(cfg.cta.text)}</a>` : ""}
+      </div>
+      </div>`;
+
+    const $ = s => root.querySelector(s), $$ = s => [...root.querySelectorAll(s)];
+    const stage = $(".hstl__stage"), pop = $(".hstl__pop"), track = $(".hstl__track");
+    const track_ = (event, i) => { (window.dataLayer = window.dataLayer || []).push({event, stl_id: cfg.id, item_id: P[i]?.id, item_name: P[i]?.name, index: i}); };
+
+    function activate(i, {scroll=true, source=null}={}){
+      const p = P[i]; if (!p) return;
+      $$(".hstl__pin").forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.i === i)));
+      $$(".hstl__card").forEach(c => c.classList.toggle("is-active", +c.dataset.i === i));
+      // highlight (Color Block)
+      const hl = $(".hstl__hl"); hl.href = p.url;
+      hl.querySelector("img").src = p.image; hl.querySelector("img").alt = p.name;
+      hl.querySelector(".hstl__hl-name").textContent = p.name;
+      hl.querySelector(".hstl__hl-desc").textContent = p.description || "";
+      hl.querySelector(".hstl__hl-price").innerHTML = price(p);
+      // popover next to the pin (flips when near the right / bottom edge)
+      pop.href = p.url;
+      pop.querySelector(".hstl__pop-name").textContent = p.name;
+      pop.querySelector(".hstl__pop-price").innerHTML = price(p);
+      if (p.pin && p.pin.show !== false){
+        const W = stage.clientWidth, H = stage.clientHeight, px = p.pin.x/100*W, py = p.pin.y/100*H;
+        const pw = pop.offsetWidth || 248, ph = pop.offsetHeight || 140;
+        const M = 12; let left = px + 28, top = py - ph/2;
+        if (left + pw > W - M) left = px - 28 - pw;              // flip to the left of the pin
+        if (left < M){                                            // no room on either side (mobile): above / below the pin
+          left = Math.max(M, Math.min(px - pw/2, W - pw - M));
+          top = py - 28 - ph; if (top < M) top = py + 28;
+        }
+        top = Math.max(M, Math.min(top, H - ph - M));
+        pop.style.left = left + "px"; pop.style.top = top + "px";
+        pop.classList.add("is-open");
+      } else pop.classList.remove("is-open");
+      if (scroll){ const card = $(`.hstl__card[data-i="${i}"]`); track.scrollTo({left: card.offsetLeft - track.offsetLeft, behavior:"smooth"}); }
+      if (source) track_("stl_pin_select", i);
+    }
+
+    $$(".hstl__pin").forEach(b => b.addEventListener("click", () => activate(+b.dataset.i, {source:"pin"})));
+    $$(".hstl__card").forEach(c => {
+      c.addEventListener("mouseenter", () => matchMedia("(hover:hover)").matches && activate(+c.dataset.i, {scroll:false}));
+      c.addEventListener("click", () => track_("stl_product_click", +c.dataset.i));
+    });
+    pop.addEventListener("click", () => track_("stl_product_click", P.indexOf(P.find(p=>p.url===pop.getAttribute("href")))));
+    $(".hstl__hl").addEventListener("click", () => track_("stl_product_click", P.indexOf(P.find(p=>p.url===$(".hstl__hl").getAttribute("href")))));
+
+    // arrows
+    const prev = $(".hstl__arrow--prev"), next = $(".hstl__arrow--next");
+    const step = () => ($(".hstl__card")?.offsetWidth || 285) + 12;
+    prev.onclick = () => track.scrollBy({left:-step()*2}); next.onclick = () => track.scrollBy({left:step()*2});
+    const sync = () => { prev.disabled = track.scrollLeft < 4; next.disabled = track.scrollLeft + track.clientWidth >= track.scrollWidth - 4; };
+    track.addEventListener("scroll", sync, {passive:true});
+    let active = Math.max(0, P.indexOf(all[Math.min(cfg.activeIndex ?? 0, all.length-1)]));
+    root.__hstlRO = new ResizeObserver(() => { sync(); const a = root.querySelector('.hstl__pin[aria-pressed="true"]'); activate(a ? +a.dataset.i : active, {scroll:false}); });
+    root.__hstlRO.observe(stage);
+    activate(active, {scroll:false}); sync();
+  }
+
+  function autoMount(){
+    document.querySelectorAll("section.hstl[data-stl-id]").forEach(el => {
+      if (el.__hstlMounted) return;
+      const id = el.getAttribute("data-stl-id");
+      const s = [...document.querySelectorAll('script[type="application/json"][data-stl-config]')].find(x => x.getAttribute("data-stl-config") === id);
+      if (!s) return;
+      try { mount(el, JSON.parse(s.textContent)); el.__hstlMounted = true; } catch (e) { console.error("[hstl]", id, e); }
+    });
+  }
+
+  window.HomaShopTheLook = Object.assign(window.HomaShopTheLook || {}, { mount, autoMount });
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", autoMount); else autoMount();
+})();
+</script>
+<section class="hstl" data-stl-id="stl-hp-outono-inverno" aria-label="Shop the Look"></section>
+<script type="application/json" data-stl-config="stl-hp-outono-inverno">{"id":"stl-hp-outono-inverno","locale":"pt-PT","currency":"EUR","eyebrow":"Shop the look","title":"Coleção de Outono/Inverno","image":{"src":"https://www.homastores.com/dw/image/v2/BFDH_PRD/on/demandware.static/-/Sites-Homa_PT-Library/default/dwd87779c6/home/shoplook/hp-shop-trend-image_solidcolor.webp?sw=1600\u0026q=80","alt":"Sala com sofá branco, almofadas, cestos e quadros hôma"},"blockColor":"#dfdbd2","cta":{"show":true,"text":"Ver todos os produtos","url":"https://www.homastores.com/pt/pt/produtos","x":50,"y":92},"popoverCta":"Ver produto","activeIndex":2,"products":[{"id":"474166","name":"Quadro decorativo mulher MONA 58x78cm","description":"Quadro decorativo mulher MONA 58x78cm","price":30,"listPrice":null,"image":"https://www.homastores.com/dw/image/v2/BFDH_PRD/on/demandware.static/-/Sites-homa-catalog/default/dw9f3b5abf/images/large/474166_product_1.jpg?sw=570\u0026q=80","url":"https://www.homastores.com/pt/pt/quadro-decorativo-mulher-mona-58x78cm-474166.html","badges":[],"pin":{"x":21,"y":24,"show":true}},{"id":"474171","name":"Vaso suspenso com planta artificial MONA 26cm","description":"Vaso suspenso com planta artificial","price":15,"listPrice":null,"image":"https://www.homastores.com/dw/image/v2/BFDH_PRD/on/demandware.static/-/Sites-homa-catalog/default/dw852e9fd4/images/large/474171_1.jpg?sw=570\u0026q=80","url":"https://www.homastores.com/pt/pt/vaso-suspenso-com-planta-artificial-mona-26cm-474171.html","badges":[{"label":"Novo"}],"pin":{"x":41,"y":25,"show":true}},{"id":"473088","name":"Almofada SAVOY 35x50cm","description":"Almofada SAVOY 35x50cm multicolor","price":15,"listPrice":20,"image":"https://www.homastores.com/dw/image/v2/BFDH_PRD/on/demandware.static/-/Sites-homa-catalog/default/dwef6476c6/images/large/473088_ALMOFADA35X50CMMULTICOLORSAVOY1.jpg?sw=570\u0026q=80","url":"https://www.homastores.com/pt/pt/almofada-savoy-35x50cm-473088.html","badges":[],"pin":{"x":53,"y":59,"show":true}},{"id":"474179","name":"Centro de mesa MONA 23cm","description":"Centro de mesa MONA 23cm","price":8,"listPrice":null,"image":"https://www.homastores.com/dw/image/v2/BFDH_PRD/on/demandware.static/-/Sites-homa-catalog/default/dw2ddc35ad/images/large/474179_Product_1.jpg?sw=570\u0026q=80","url":"https://www.homastores.com/pt/pt/centro-de-mesa-mona-23cm-474179.html","badges":[],"pin":{"x":71,"y":64,"show":true}},{"id":"474182","name":"Cesto CYRIELLE 29x27cm","description":"Cesto CYRIELLE 29x27cm","price":12,"listPrice":null,"image":"https://www.homastores.com/dw/image/v2/BFDH_PRD/on/demandware.static/-/Sites-homa-catalog/default/dw895e47b8/images/large/474183.jpg?sw=570\u0026q=80","url":"https://www.homastores.com/pt/pt/cesto-cyrielle-29x27cm-474182.html","badges":[{"label":"Sustentável","tone":"success"}],"pin":{"x":60,"y":88,"show":true}},{"id":"453245","name":"Tapete TOUL natural 120x160cm","description":"Tapete TOUL natural 120x160cm","price":59,"listPrice":null,"image":"https://www.homastores.com/dw/image/v2/BFDH_PRD/on/demandware.static/-/Sites-homa-catalog/default/dw7a2f659f/images/large/453245.JPG?sw=570\u0026q=80","url":"https://www.homastores.com/pt/pt/tapete-toul-natural-120x160cm-453245.html","badges":[{"label":"Exclusivo online","tone":"brand"}],"pin":{"x":30,"y":86,"show":true}}]}</script>
+<script>window.HomaShopTheLook && window.HomaShopTheLook.autoMount();</script>
+<!-- ===== Fim do código exportado ===== -->
+</body>
+</html>

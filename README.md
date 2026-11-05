@@ -130,6 +130,20 @@ Variáveis de ambiente (Netlify → Site configuration → Environment variables
 
 As credenciais nunca vão para o código nem para o browser; o token OAuth fica guardado do lado do servidor (Netlify Blobs) e é renovado automaticamente. Código: `netlify/lib/akeneo-api.mjs`, `netlify/functions/pim-akeneo-background.mjs`; teste: `node test/akeneo.test.mjs`.
 
+## Shop the Look
+Separador **Shop the Look** (menu lateral): módulos para o site novo (homastores.com, PT e ES) com produtos do feed do FeedForge, sem scraping (substitui a ferramenta antiga em Vercel).
+
+1. **Novo Shop the Look** → separador **Módulo**: nome, mercado (PT/ES), página (Homepage/PLP/PDP), imagem principal (recomendado 1475×1080 ≈ 1,37:1), eyebrow, título, cor do Color Block, CTA na imagem (texto, link, posição X/Y %), texto do popover e produto ativo.
+2. **Produtos**: pesquisa por ID, EAN ou nome (sem acentos, parcial), navegação categoria → subcategoria (do `product_type`), filtros (só em stock, em promoção, preço, cor, material e outras colunas com poucos valores). "Adicionar ao look"; na lista do look arrasta pelo ⠿ para ordenar o carrossel, liga/desliga o pin, ajusta X/Y, badges (branco, amarelo `brand`, verde `success`). Com **Mover pins** ligado, arrasta os pins diretamente na imagem (guardados em %). Produtos fora do feed ou sem stock ficam assinalados e escondidos no widget.
+3. **Exportar** → **Gerar código**: valida (imagem, ≥ 2 produtos, nenhum fora do feed, pins entre 0–100%) e gera o código para um bloco HTML/Custom do Page Designer — CSS + JS do widget (uma vez por página) + `<section class="hstl" data-stl-id="…">` + JSON com os produtos já resolvidos (preço, promoção, imagem, link do feed nesse momento; o site não chama o FeedForge). Volta a gerar quando os preços mudarem. **Copiar JSON** dá a configuração resolvida.
+
+Pré-visualização: o widget real num iframe (Desktop ou 375 px). O módulo só guarda referências (IDs, pins, badges, layout); os dados de produto vêm sempre do feed otimizado (`output` do último run de cada mercado, escolhido pela língua do feed `pt-PT`/`es-ES`).
+
+- Widget: `public/stl/widget.css` + `public/stl/widget.js` (`window.HomaShopTheLook.mount(sectionEl, config)`, pode ser chamado de novo; eventos GA4 `stl_pin_select` e `stl_product_click` com `stl_id`, `item_id`, `item_name`, `index`). Exemplo do código exportado numa página simples: `public/stl/export-test.html`.
+- API (`/api/stl/*`): `products?q=&category=&subcategory=&filters=&market=&page=` (ou `ids=`), `categories?market=`, `modules` (CRUD + `/:id/duplicate`), `render/:id?market=` e `POST render` (configuração com produtos do feed, `missing`/`oos` assinalados). Módulos em Netlify Blobs (`stl/modules/*`); o catálogo de cada mercado fica em cache (Blobs + memória, 5 min) e renova-se a cada run.
+- Os módulos são editoriais: não entram no relatório de runs para o Filo.
+- Código: `netlify/lib/stl.mjs`, `public/stl-editor.js`, `public/stl/`; teste: `node test/stl.test.mjs`.
+
 ## Feed em XML
 Além do Sheets (CSV), cada feed tem links XML públicos (Dashboard → Links XML), gerados a partir do output do último run:
 `/xml/<feed>/<token>/meta.xml` e `/xml/<feed>/<token>/gmc.xml` (acrescenta `.gz` para a versão comprimida).

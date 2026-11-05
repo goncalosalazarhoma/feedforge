@@ -1,0 +1,106 @@
+/* hôma · Shop the Look widget (storefront + FeedForge preview). Gilroy comes from the storefront. */
+/* ================= hôma Shop the Look widget ================= */
+.hstl{
+  --hstl-text:#181818; --hstl-headline:#000; --hstl-secondary:#444;
+  --hstl-block:#dfdbd2;          /* Color Block (configurável) */
+  --hstl-list-bg:#f3f1ea;        /* beige/beige-70 */
+  --hstl-card-bg:#f8f6f4;
+  --hstl-brand:#daaa00; --hstl-success:#194e31; --hstl-danger:#8e030f; --hstl-border:#e5e5e5;
+  --hstl-arrow:#aeaeae;
+  --hstl-gutter:40px;
+  font-family:Gilroy,"Helvetica Neue",Arial,sans-serif; color:var(--hstl-text);
+  display:flex; flex-direction:column; gap:32px; width:100%; box-sizing:border-box;
+}
+.hstl *,.hstl *::before,.hstl *::after{box-sizing:border-box}
+.hstl__head{padding:0 var(--hstl-gutter);max-width:1520px}
+.hstl__eyebrow{margin:0;font-weight:500;font-size:18px;line-height:28px;text-transform:uppercase}
+.hstl__title{margin:0;font-weight:500;font-size:34px;line-height:52px;letter-spacing:-.02em;color:var(--hstl-headline)}
+
+.hstl__products{display:flex;flex-direction:column}
+.hstl__inspo{display:flex;width:100%}
+.hstl__stage{position:relative;flex:1 1 auto;aspect-ratio:1475/1080;overflow:hidden;background:#e9e5dd}
+.hstl__stage>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+
+/* Pins */
+.hstl__pin{position:absolute;z-index:2;width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;
+  border:0;padding:0;cursor:pointer;background:rgba(255,255,255,.92);box-shadow:0 2px 8px rgba(0,0,0,.25);
+  display:grid;place-items:center;transition:transform .15s ease,background .15s ease}
+.hstl__pin::after{content:"";width:8px;height:8px;border-radius:50%;background:var(--hstl-text);transition:background .15s}
+.hstl__pin:hover{transform:scale(1.12)}
+.hstl__pin:focus-visible{outline:2px solid #fff;outline-offset:3px}
+.hstl__pin[aria-pressed="true"]{background:var(--hstl-text);box-shadow:0 0 0 2px #fff,0 2px 10px rgba(0,0,0,.3)}
+.hstl__pin[aria-pressed="true"]::after{background:#fff}
+.hstl__pin[aria-pressed="true"]::before{content:"";position:absolute;inset:-9px;border-radius:50%;border:1.5px solid rgba(255,255,255,.65);animation:hstl-pulse 1.8s ease-out infinite}
+@keyframes hstl-pulse{from{transform:scale(.7);opacity:1}to{transform:scale(1.25);opacity:0}}
+@media (prefers-reduced-motion:reduce){.hstl__pin[aria-pressed="true"]::before{animation:none}}
+
+/* Popover (glass card from Figma "Product card") */
+.hstl__pop{position:absolute;z-index:3;width:248px;padding:20px;border-radius:4px;border:1px solid #fff;
+  background:rgba(255,255,255,.6);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);
+  display:flex;flex-direction:column;gap:4px;font-size:16px;line-height:28px;color:var(--hstl-text);
+  text-decoration:none;opacity:0;transform:translateY(4px);transition:opacity .18s,transform .18s;pointer-events:none}
+.hstl__pop.is-open{opacity:1;transform:none;pointer-events:auto}
+.hstl__pop-name{font-weight:400;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.hstl__pop-price{font-weight:500;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.hstl__pop-cta{font-weight:500;text-decoration:underline;line-height:24px}
+
+/* CTA on image */
+.hstl__cta--below{display:none;position:static!important;transform:none!important;color:var(--hstl-text)!important;text-shadow:none!important;margin:24px 16px 0;text-align:center}
+.hstl__cta{position:absolute;z-index:1;transform:translate(-50%,-50%);color:#fff;font-weight:500;font-size:16px;line-height:24px;
+  text-decoration:underline;text-underline-offset:3px;white-space:nowrap;text-shadow:0 1px 6px rgba(0,0,0,.35)}
+
+/* Color Block + highlight card */
+.hstl__block{flex:0 0 auto;width:23.18%;min-width:300px;background:var(--hstl-block);display:flex;align-items:center;justify-content:center;padding:40px clamp(24px,4.2vw,80px)}
+.hstl__hl{width:100%;max-width:285px;display:flex;flex-direction:column;gap:8px;color:inherit;text-decoration:none}
+.hstl__hl-img{aspect-ratio:285/380;background:var(--hstl-card-bg);position:relative;overflow:hidden}
+.hstl__hl-img img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;transition:opacity .2s}
+.hstl__hl-name{font-weight:600;font-size:16px;line-height:28px}
+.hstl__hl-desc{font-size:14px;line-height:24px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* Prices + badges */
+.hstl__price{display:flex;gap:8px;align-items:center;white-space:nowrap}
+.hstl__price b{font-weight:600;font-size:16px;line-height:28px}
+.hstl__price s{font-size:14px;line-height:24px;color:var(--hstl-secondary)}
+.hstl__price em,.hstl__price s{font-style:normal}
+.hstl__price em{font-size:14px;line-height:24px;color:var(--hstl-danger)}
+.hstl__badges{position:absolute;left:8px;bottom:8px;display:flex;flex-direction:column;gap:4px;align-items:flex-start}
+.hstl__badge{font-size:12px;line-height:18px;padding:2px 8px;border-radius:4px;background:#fff;border:1px solid var(--hstl-border);color:var(--hstl-text)}
+.hstl__badge--brand{background:var(--hstl-brand);border-color:var(--hstl-brand);color:#101010}
+.hstl__badge--success{background:var(--hstl-success);border-color:var(--hstl-success);color:#fff}
+
+/* Products list / carousel */
+.hstl__list{position:relative;background:var(--hstl-list-bg);padding:118px var(--hstl-gutter)}
+.hstl__track{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;scroll-behavior:smooth}
+.hstl__track::-webkit-scrollbar{display:none}
+.hstl__card{flex:0 0 285px;min-width:0;scroll-snap-align:start;display:flex;flex-direction:column;gap:8px;color:inherit;text-decoration:none;cursor:pointer}
+.hstl__card-img{position:relative;aspect-ratio:285/380;background:var(--hstl-card-bg);overflow:hidden}
+.hstl__card-img img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:transform .4s}
+.hstl__card:hover .hstl__card-img img{transform:scale(1.03)}
+.hstl__card-img::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--hstl-text);transform:scaleX(0);transform-origin:left;transition:transform .25s}
+.hstl__card.is-active .hstl__card-img::after{transform:scaleX(1)}
+.hstl__card-name{font-weight:500;font-size:16px;line-height:28px;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+.hstl__card-desc{font-size:12px;line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hstl__card .hstl__price b{font-weight:500}
+.hstl__arrow{position:absolute;top:50%;transform:translateY(-50%);width:42px;height:42px;border-radius:43px;border:0;
+  background:var(--hstl-arrow);display:grid;place-items:center;cursor:pointer;z-index:2;transition:opacity .2s}
+.hstl__arrow[disabled]{opacity:0;pointer-events:none}
+.hstl__arrow--prev{left:32px}.hstl__arrow--next{right:24px}
+.hstl__arrow svg{width:16px;height:16px}
+
+/* Mobile (Figma 375) */
+@media (max-width:767px){
+  .hstl{--hstl-gutter:16px;gap:32px}
+  .hstl__eyebrow{font-size:14px;line-height:24px}
+  .hstl__title{font-size:22px;line-height:32px;letter-spacing:-.01em}
+  .hstl__inspo{flex-direction:column}
+  .hstl__stage{aspect-ratio:375/396}
+  .hstl__block{display:none}
+  .hstl__pop{width:200px;padding:12px 14px;font-size:14px;line-height:22px}
+  .hstl__pop .hstl__price b{font-size:14px;line-height:22px}
+  .hstl__stage .hstl__cta{display:none}
+  .hstl__cta--below{display:block}
+  .hstl__list{padding:80px 0 80px 20px}
+  .hstl__card{flex-basis:160px}
+  .hstl__card-desc{font-size:14px;line-height:24px}
+  .hstl__arrow--prev{left:16px}.hstl__arrow--next{right:16px}
+}
