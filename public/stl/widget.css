@@ -128,6 +128,8 @@
 /* desktop ≥ 1024: image | 2×2 products */
 .hstl__mbody{display:grid;grid-template-columns:minmax(0,var(--hstl-s-img-fr,1fr)) minmax(0,var(--hstl-s-grid-fr,1fr));gap:var(--hstl-s-body-gap-d,40px);padding:0 var(--hstl-gutter);align-items:start}
 .hstl--mood .hstl__mstage{aspect-ratio:auto;align-self:stretch;min-height:100%;background:#e9e5dd}
+/* desktop: the image follows the height of the product grid, but never less than 3:4 (otherwise it collapses with 0–2 products) */
+@media (min-width:1025px){.hstl--mood .hstl__mstage::before{content:"";display:block;padding-top:133.333%}}
 .hstl__mgrid{display:grid;grid-template-columns:repeat(var(--hstl-s-grid-cols,2),minmax(0,1fr));column-gap:var(--hstl-s-grid-gap-x,48px);row-gap:var(--hstl-s-grid-gap-y,32px);align-items:start}
 
 /* product card (Card/Product/Default: wishlist + quick add on the image) */
