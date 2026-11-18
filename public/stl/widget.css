@@ -104,3 +104,77 @@
   .hstl__card-desc{font-size:14px;line-height:24px}
   .hstl__arrow--prev{left:16px}.hstl__arrow--next{right:16px}
 }
+
+/* ================= Moodboard layout (Figma "Shop the Look" 9060:8542) ================= */
+.hstl--mood{gap:40px;padding:80px 0;background:#fff;--hstl-gutter:40px}
+.hstl--mood .hstl__mhead{display:flex;align-items:flex-end;gap:40px;padding:0 var(--hstl-gutter)}
+.hstl--mood .hstl__mtitles{flex:1 1 0;min-width:0;display:flex;flex-direction:column}
+.hstl--mood .hstl__eyebrow{font-weight:700;font-size:14px;line-height:24px;letter-spacing:.98px;text-transform:uppercase;color:#757575}
+.hstl--mood .hstl__title{font-weight:500;font-size:46px;line-height:68px;letter-spacing:0;color:#101010}
+.hstl__mactions{display:flex;gap:40px;align-items:flex-end;flex:0 0 auto}
+.hstl__btn{min-width:182px;padding:12px 42px;border:1px solid #181818;font:500 16px/24px Gilroy,"Helvetica Neue",Arial,sans-serif;cursor:pointer;white-space:nowrap;transition:opacity .15s,background .15s}
+.hstl__btn--sec{background:#fff;color:#181818}
+.hstl__btn--pri{background:#181818;color:#fff}
+.hstl__btn:hover{opacity:.85}
+.hstl__btn:disabled{opacity:.5;cursor:default}
+.hstl--no-cart [data-act="cart"],.hstl--no-wishlist [data-act="wishlist"],.hstl--no-wishlist [data-item="wishlist"],.hstl--no-cart [data-item="cart"]{display:none}
+.hstl--no-cart.hstl--no-wishlist .hstl__mactions{display:none}
+
+/* desktop ≥ 1024: image | 2×2 products */
+.hstl__mbody{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:40px;padding:0 var(--hstl-gutter);align-items:start}
+.hstl--mood .hstl__mstage{aspect-ratio:auto;align-self:stretch;min-height:100%;background:#e9e5dd}
+.hstl__mgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:48px;row-gap:32px;align-items:start}
+
+/* product card (Card/Product/Default: wishlist + quick add on the image) */
+.hstl__mcard{position:relative;display:flex;flex-direction:column;gap:8px;min-width:0}
+.hstl__mcard-img{position:relative;aspect-ratio:285/380;background:var(--hstl-card-bg);overflow:hidden}
+.hstl__mcard-img>a{position:absolute;inset:0;display:block}
+.hstl__mcard-img img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .4s}
+.hstl__mcard:hover .hstl__mcard-img img{transform:scale(1.03)}
+.hstl__mcard-img::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--hstl-text);transform:scaleX(0);transform-origin:left;transition:transform .25s;pointer-events:none}
+.hstl__mcard.is-active .hstl__mcard-img::after{transform:scaleX(1)}
+.hstl__mcard .hstl__badges{left:8px;bottom:8px}
+.hstl__icon{position:absolute;right:8px;width:42px;height:42px;padding:0;border:0;background:rgba(255,255,255,.4);display:grid;place-items:center;cursor:pointer;z-index:1;transition:background .15s}
+.hstl__icon:hover{background:rgba(255,255,255,.75)}
+.hstl__icon:focus-visible{outline:2px solid #181818;outline-offset:2px}
+.hstl__icon--wish{top:8px}
+.hstl__icon--cart{bottom:8px}
+.hstl__icon--wish[aria-pressed="true"] path{fill:#181818}
+.hstl__icon.is-done{background:#fff}
+.hstl__mcard-txt{display:flex;flex-direction:column;color:var(--hstl-text);text-decoration:none;min-width:0}
+.hstl__mcard-txt .hstl__card-name{font-weight:500;font-size:16px;line-height:28px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.hstl__mcard-txt .hstl__card-desc{font-size:12px;line-height:24px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.hstl__mcard-txt .hstl__price{flex-wrap:wrap}
+.hstl__mcard-txt .hstl__price b{font-weight:500}
+.hstl--mood .hstl__cta--below{display:none}
+
+/* tablet 768–1024 (Figma "Device Width=1024-767"): image on top (3:4), 4 cards per row (more → horizontal scroll) */
+@media (max-width:1024px){
+  .hstl__mbody{grid-template-columns:minmax(0,1fr)}
+  .hstl--mood .hstl__mstage{aspect-ratio:285/380;min-height:0}
+  .hstl__mgrid{display:flex;gap:16px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none}
+  .hstl__mgrid::-webkit-scrollbar{display:none}
+  .hstl__mcard{flex:0 0 calc((100% - 48px)/4);scroll-snap-align:start}
+}
+
+/* mobile ≤ 767: smaller head without buttons, 2 cards per view */
+@media (max-width:767px){
+  .hstl--mood{gap:24px;padding:40px 0;--hstl-gutter:20px}
+  .hstl--mood .hstl__eyebrow{font-size:12px;line-height:20px;letter-spacing:.84px}
+  .hstl--mood .hstl__title{font-size:28px;line-height:42px}
+  .hstl--mood .hstl__mtitles{gap:2px}
+  .hstl__mactions{display:none}
+  .hstl__mbody{gap:16px}
+  .hstl__mcard{flex-basis:calc((100% - 16px)/2);gap:4px}
+  .hstl__icon{width:44px;height:44px;right:0;background:none}
+  .hstl__icon::before{content:"";position:absolute;inset:6px;background:rgba(255,255,255,.4);z-index:-1}
+  .hstl__icon--wish{top:0}.hstl__icon--cart{bottom:0}
+  .hstl__icon .hstl__ico-bag{width:16px;height:16px}
+  .hstl__mcard-txt .hstl__card-name{font-size:14px;line-height:20px}
+  .hstl__mcard-txt .hstl__card-desc{font-size:12px;line-height:18px;color:var(--hstl-secondary)}
+  .hstl__mcard-txt .hstl__price b{font-size:14px;line-height:20px}
+  .hstl__mcard-txt .hstl__price s,.hstl__mcard-txt .hstl__price em{font-size:12px;line-height:18px}
+  .hstl__mcard-txt .hstl__price{gap:4px}
+  .hstl--mood .hstl__stage .hstl__cta{display:none}
+  .hstl--mood .hstl__cta--below{display:block;margin:8px 0 0}
+}
