@@ -96,4 +96,45 @@ const json = JSON.parse(snip.match(/data-stl-config="[^"]+">([\s\S]*?)<\/script>
 assert.ok(!json.products.some((p) => p.missing), "missing products not exported");
 console.log("Export OK");
 
+// ---- moodboard layout: stored, rendered, validated, exported
+assert.equal(m.layout, "classic", "existing modules default to the classic layout");
+assert.equal(cfg.layout, "classic"); assert.equal(cfg.actions, undefined, "classic config has no cart/wishlist actions");
+let mb = (await call("POST", "/stl/modules", { name: "Moodboard Natal", layout: "moodboard", actions: { show: true, cartText: "x".repeat(80) }, image: { src: "https://img/mood.webp", alt: "Sala" }, products: ["473088", "474166", "474182", "474179"].map((id) => ({ id, pin: { x: 40, y: 50 } })) })).json;
+assert.equal(mb.layout, "moodboard");
+assert.equal((await call("GET", "/stl/modules")).json.find((x) => x.id === mb.id).layout, "moodboard", "layout in the module list");
+assert.deepEqual([mb.actions.show, mb.actions.wishlistText, mb.actions.cartText.length], [true, "", 40], "actions sanitised");
+assert.equal((await call("PUT", `/stl/modules/${mb.id}`, { ...mb, layout: "carousel3d" })).json.layout, "classic", "unknown layout falls back to classic");
+mb = (await call("PUT", `/stl/modules/${mb.id}`, { ...mb, layout: "moodboard", actions: { show: false } })).json;
+assert.equal(mb.actions.show, false);
+const mcfg = (await call("GET", `/stl/render/${mb.id}`)).json;
+assert.equal(mcfg.layout, "moodboard"); assert.equal(mcfg.actions.show, false);
+assert.equal(mcfg.products.length, 4);
+v = ctx.hstlValidate(mb, mcfg);
+assert.equal(v.ok, true); assert.ok(!v.warnings.some((w) => /moodboard/.test(w)), "4 products: no layout warning");
+v = ctx.hstlValidate({ ...mb, products: mb.products.slice(0, 3) }, { ...mcfg, products: mcfg.products.slice(0, 3) });
+assert.ok(v.warnings.some((w) => /4 produtos.*espaço vazio/.test(w)), "odd count warns about the 2×2 grid");
+const msnip = ctx.hstlSnippet({ css: ".hstl{}", js: "/*js*/", config: mcfg, name: "Mood" });
+assert.equal(JSON.parse(msnip.match(/data-stl-config="[^"]+">([\s\S]*?)<\/script>/)[1]).layout, "moodboard", "layout travels in the exported config");
+// widget: both layouts mount and the moodboard exposes setHandlers
+const wjs = fs.readFileSync(new URL("../public/stl/widget.js", import.meta.url), "utf8");
+assert.ok(/function mountMood/.test(wjs) && /setHandlers/.test(wjs) && /hstl:\$\{kind\}/.test(wjs), "moodboard renderer, handlers and DOM events present");
+console.log("Moodboard OK");
+
+// ---- visual editor (style overrides → CSS variables)
+const SS = await import("../public/stl/style-schema.mjs");
+assert.deepEqual(SS.sanitizeStyle({ "title-d": 46, "pad-top-d": 120.4, "gutter-d": 9999, headline: "#583D3E", "card-ratio": "7/3", bogus: 1, bg: "red" }, "moodboard"), { "pad-top-d": 120, "gutter-d": 200, headline: "#583d3e" }, "defaults dropped, clamped, invalid removed");
+const vars = SS.styleVars({ "title-d": 60, "img-share": 60, "card-ratio": "1/1", "list-pad-d": 40 }, "moodboard");
+assert.deepEqual(vars, { "--hstl-s-title-d": "60px", "--hstl-s-title-d-lh": "89px", "--hstl-s-img-fr": "60fr", "--hstl-s-grid-fr": "40fr", "--hstl-s-card-ratio": "1/1" }, "line-height follows the font size; classic-only fields not emitted for the moodboard");
+for (const f of SS.FIELDS) for (const l of f.layouts) { const d = SS.defaultOf(f, l); assert.ok(d !== undefined, `${f.k} default for ${l}`); if (f.type === "ratio") assert.ok(f.options.some(([o]) => o === d), `${f.k} default is an option`); else if (f.type !== "color") assert.ok(d >= f.min && d <= f.max, `${f.k} default in range`); }
+// every override has a matching var() in the widget CSS (so a field never does nothing)
+const wcss = fs.readFileSync(new URL("../public/stl/widget.css", import.meta.url), "utf8");
+for (const f of SS.FIELDS) { const names = f.k === "img-share" ? ["--hstl-s-img-fr", "--hstl-s-grid-fr"] : [`--hstl-s-${f.k}`]; for (const n of names) assert.ok(wcss.includes(`var(${n}`), `widget.css uses ${n}`); if (f.lh) assert.ok(wcss.includes(`var(--hstl-s-${f.k}-lh`), `widget.css uses --hstl-s-${f.k}-lh`); }
+mb = (await call("PUT", `/stl/modules/${mb.id}`, { ...mb, style: { "grid-gap-x": 24, "btn-bg": "#583d3e", "title-d": 46, nope: 3 } })).json;
+assert.deepEqual(mb.style, { "grid-gap-x": 24, "btn-bg": "#583d3e" }, "style stored sanitised");
+const scfg = (await call("GET", `/stl/render/${mb.id}`)).json;
+assert.deepEqual(scfg.vars, { "--hstl-s-grid-gap-x": "24px", "--hstl-s-btn-bg": "#583d3e" }, "render carries the CSS variables");
+assert.deepEqual((await call("GET", `/stl/render/${m.id}`)).json.vars, {}, "no overrides → no variables");
+assert.ok(/VAR_NAME = .*--hstl-s-/.test(wjs) && /applyVars\(root/.test(wjs), "widget whitelists the variables it applies");
+console.log("Aparência OK");
+
 console.log("\n✅ testes Shop the Look passaram");
