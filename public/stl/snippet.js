@@ -34,6 +34,10 @@
     if (oos.length) warnings.push(`Sem stock (ficam escondidos no site): ${oos.join(", ")}.`);
     if (module.cta && module.cta.show && !module.cta.url) warnings.push("O CTA da imagem não tem link.");
     if (prods.filter((p) => !p.missing && !p.oos).length < 2 && !errors.length) warnings.push("Com os produtos sem stock escondidos, sobram menos de 2 no look.");
+    if (module.layout === "moodboard") {
+      const n = prods.filter((p) => !p.missing && !p.oos).length;
+      if (n && n !== 4) warnings.push(`O moodboard foi desenhado para 4 produtos (2×2 no desktop, 4 numa linha no tablet); este tem ${n}${n % 2 ? ", e a grelha fica com um espaço vazio" : ""}.`);
+    }
     return { ok: errors.length === 0, errors, warnings };
   }
 

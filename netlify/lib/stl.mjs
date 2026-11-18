@@ -3,6 +3,7 @@
 // STL saves are editorial, not pipeline runs — nothing here reports to Filo.
 import { db, httpError } from "./store.mjs";
 import { PK, LOCALES, fold, getCatalog, searchCatalog, categoryTree, parseFilters, facetsFor, publicItem } from "./products.mjs";
+import { sanitizeStyle, styleVars } from "../../public/stl/style-schema.mjs"; // visual editor (shared with the editor)
 // the feed search lives in products.mjs (shared with Page Builder); re-exported for existing imports
 export { LOCALES, fold, feedForMarket, toCatalogItem, getCatalog, categoryTree, parseFilters, searchCatalog, facetsFor } from "./products.mjs";
 
@@ -19,12 +20,16 @@ const clampPct = (v, d = 50) => { const n = Number(v); return Number.isFinite(n)
 // keep only references + layout (never product data)
 export function sanitizeModule(m = {}) {
   const market = LOCALES[m.market] ? m.market : "pt";
+  const layout = m.layout === "moodboard" ? "moodboard" : "classic";
   return {
     id: m.id,
     name: String(m.name || "Novo Shop the Look").slice(0, 120),
     market,
     page: ["homepage", "plp", "pdp"].includes(m.page) ? m.page : "homepage",
     status: m.status === "live" ? "live" : "draft",
+    layout,   // classic = image + Color Block + carousel; moodboard = image + product grid
+    style: sanitizeStyle(m.style, layout),   // visual editor overrides (only what differs from the Figma defaults)
+    actions: { show: m.actions?.show !== false, wishlistText: String(m.actions?.wishlistText || "").slice(0, 40), cartText: String(m.actions?.cartText || "").slice(0, 40) },
     eyebrow: String(m.eyebrow ?? "Shop the look"),
     title: String(m.title ?? ""),
     image: { src: String(m.image?.src || ""), alt: String(m.image?.alt || "") },
@@ -40,7 +45,7 @@ export function sanitizeModule(m = {}) {
   };
 }
 
-const summary = (m) => ({ id: m.id, name: m.name, market: m.market, page: m.page, status: m.status, products: m.products.length, image: m.image.src, updatedAt: m.updatedAt, createdAt: m.createdAt });
+const summary = (m) => ({ id: m.id, name: m.name, market: m.market, page: m.page, status: m.status, layout: m.layout || "classic", products: m.products.length, image: m.image.src, updatedAt: m.updatedAt, createdAt: m.createdAt });
 
 async function saveIndex(m, remove = false) {
   const idx = ((await db.get(SK.index())) || []).filter((x) => x.id !== m.id);
@@ -62,6 +67,8 @@ export function hydrate(mod, catalog) {
   return {
     id: mod.id, locale: LOCALES[mod.market], currency: "EUR", market: mod.market, page: mod.page,
     eyebrow: mod.eyebrow, title: mod.title, image: mod.image, blockColor: mod.blockColor, cta: mod.cta, popoverCta: mod.popoverCta, activeIndex: mod.activeIndex,
+    layout: mod.layout || "classic", ...(mod.layout === "moodboard" ? { actions: mod.actions || { show: true } } : {}),
+    vars: styleVars(mod.style, mod.layout || "classic"),
     products: mod.products.map((ref) => {
       const p = byId.get(ref.id);
       if (!p) return { id: ref.id, name: ref.id, description: "", price: 0, listPrice: null, image: "", url: "#", badges: ref.badges, pin: ref.pin, missing: true };
