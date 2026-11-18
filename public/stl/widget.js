@@ -18,9 +18,17 @@
     "es-ES": { wishlistAll: "Añadir a favoritos", cartAll: "Añadir todo a la cesta", wishlist: "Añadir a favoritos", cart: "Añadir a la cesta", added: "Añadido" },
   };
   const H = (window.HomaShopTheLook && window.HomaShopTheLook.__handlers) || {};
+  // visual editor overrides (config.vars = { "--hstl-s-…": value }) — names and values are whitelisted
+  const VAR_NAME = /^--hstl-s-[a-z0-9-]{1,40}$/, VAR_VALUE = /^(#[0-9a-f]{3,8}|\d+(\.\d+)?(px|%|fr)?|\d+\/\d+)$/i;
+  function applyVars(root, cfg){
+    (root.__hstlVars || []).forEach(n => root.style.removeProperty(n));
+    root.__hstlVars = [];
+    for (const [n, v] of Object.entries(cfg.vars || {})) if (VAR_NAME.test(n) && VAR_VALUE.test(String(v))) { root.style.setProperty(n, String(v)); root.__hstlVars.push(n); }
+  }
   const mounted = new Set();
 
   function mount(root, cfg){
+    applyVars(root, cfg || {});
     if (cfg && cfg.layout === "moodboard") return mountMood(root, cfg);
     root.classList.remove("hstl--mood");
     const fmt = new Intl.NumberFormat(cfg.locale || "pt-PT", {style:"currency", currency:cfg.currency || "EUR"});
