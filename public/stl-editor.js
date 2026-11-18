@@ -96,7 +96,10 @@
         .stl-frame-wrap{background:var(--soft);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;position:relative}
         .stl-frame-wrap iframe{border:0;display:block;background:#fff;transform-origin:0 0;position:absolute;top:0}
         .stl-frame-wrap.mobile iframe,.stl-frame-wrap.tablet iframe{box-shadow:0 0 0 1px var(--line)}
-        .stl-panel{max-height:calc(100vh - 120px);overflow:auto}
+        .stl-panel{max-height:calc(100vh - 120px);overflow:auto;min-width:0}
+        .stl-panel .grid.two{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+        .stl-panel input,.stl-panel select,.stl-panel textarea{min-width:0;max-width:100%;box-sizing:border-box}
+        .stl-panel .card{min-width:0}
         .stl-item img{width:56px;height:56px;object-fit:cover;border-radius:6px;background:var(--soft);flex:0 0 auto}
         .stl-item{border:1px solid var(--line);border-radius:8px;padding:8px;background:#fff;margin-bottom:8px}
         .stl-item.drag-over{border-color:var(--accent)}
@@ -275,7 +278,7 @@
         if (k === "blockColor") $$('[data-k="blockColor"]', box).forEach((o) => { if (o !== el) o.value = v; });
         if (k === "image.src") imgInfo();
         if (k === "name") $("h1", main).textContent = v || "—";
-        if (k === "layout") { m.actions ||= { show: true, wishlistText: "", cartText: "" }; changed(); return drawModulo(box, main); }
+        if (k === "layout") { m.actions ||= { show: true, wishlistText: "", cartText: "" }; return drawEditor(main); } // header + tabs + frame follow the layout
         if (k === "market" && v !== prevMarket) { ST.picker = { ...ST.picker, category: "", subcategory: "", page: 1, result: null }; await guard(() => fetchIds(v, m.products.map((p) => p.id))); if (m.layout === "moodboard") { changed(); return drawModulo(box, main); } }
         changed();
       });
