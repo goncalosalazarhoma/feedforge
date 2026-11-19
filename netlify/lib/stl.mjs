@@ -65,7 +65,7 @@ async function uniqueId(base) {
 export function hydrate(mod, catalog) {
   const byId = new Map(catalog.items.map((p) => [p.id, p]));
   return {
-    id: mod.id, locale: LOCALES[mod.market], currency: "EUR", market: mod.market, page: mod.page,
+    id: mod.id, name: mod.name, locale: LOCALES[mod.market], currency: "EUR", market: mod.market, page: mod.page,
     eyebrow: mod.eyebrow, title: mod.title, image: mod.image, blockColor: mod.blockColor, cta: mod.cta, popoverCta: mod.popoverCta, activeIndex: mod.activeIndex,
     layout: mod.layout || "classic", ...(mod.layout === "moodboard" ? { actions: mod.actions || { show: true } } : {}),
     vars: styleVars(mod.style, mod.layout || "classic"),
@@ -74,7 +74,7 @@ export function hydrate(mod, catalog) {
       if (!p) return { id: ref.id, name: ref.id, description: "", price: 0, listPrice: null, image: "", url: "#", badges: ref.badges, pin: ref.pin, missing: true };
       return {
         id: p.id, name: p.title, description: p.description, price: p.salePrice ?? p.price ?? 0, listPrice: p.salePrice ? p.price : null,
-        image: p.image, url: p.link, badges: ref.badges, pin: ref.pin, availability: p.availability, ...(p.inStock ? {} : { oos: true }),
+        image: p.image, url: p.link, path: p.path || [], badges: ref.badges, pin: ref.pin, availability: p.availability, ...(p.inStock ? {} : { oos: true }),
       };
     }),
     hydratedAt: new Date().toISOString(), feedGeneratedAt: catalog.generatedAt,

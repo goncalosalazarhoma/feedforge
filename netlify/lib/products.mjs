@@ -186,7 +186,7 @@ export function badgesFor(p, market = "pt", now = Date.now()) {
 export function cardProduct(p, market = "pt") {
   if (!p || p.missing) return { id: String(p?.id ?? ""), missing: true };
   return {
-    id: p.id, name: p.title, description: p.description, url: p.link, image: p.image,
+    id: p.id, name: p.title, description: p.description, url: p.link, image: p.image, path: p.path || [],
     price: p.salePrice ?? p.price ?? 0, listPrice: p.salePrice ? p.price : null,
     inStock: p.inStock, ...(p.inStock ? {} : { oos: true }), badges: badgesFor(p, market),
   };
