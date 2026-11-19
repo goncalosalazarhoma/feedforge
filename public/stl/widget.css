@@ -1,4 +1,6 @@
-/* hôma · Shop the Look widget (storefront + FeedForge preview). Gilroy comes from the storefront. */
+/* hôma · Shop the Look (storefront + FeedForge preview). Gilroy comes from the storefront.
+   No JavaScript: the markup comes from public/stl/render.mjs; interactions are :hover / :focus-within here and :has() rules
+   generated per module (active product, popover by card hover, Color Block highlight). */
 /* ================= hôma Shop the Look widget ================= */
 /* Visual editor: every value below can be overridden per module with --hstl-s-<key> on the <section> (see style-schema.mjs);
    the fallbacks are the Figma values. */
@@ -21,28 +23,37 @@
 
 .hstl__products{display:flex;flex-direction:column}
 .hstl__inspo{display:flex;width:100%}
-.hstl__stage{position:relative;flex:1 1 auto;aspect-ratio:var(--hstl-s-stage-d,1475/1080);overflow:hidden;background:#e9e5dd}
+.hstl__stage{position:relative;flex:1 1 auto;aspect-ratio:var(--hstl-s-stage-d,1475/1080);overflow:hidden;background:#e9e5dd;container-type:inline-size}
 .hstl__stage>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
 
-/* Pins */
-.hstl__pin{position:absolute;z-index:2;width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;
-  border:0;padding:0;cursor:pointer;background:rgba(255,255,255,.92);box-shadow:0 2px 8px rgba(0,0,0,.25);
+/* Pins: .hstl__pw is the positioned point (left/top per module), the pin and its popover live inside */
+.hstl__pw{position:absolute;z-index:2;width:0;height:0}
+.hstl__pw:hover,.hstl__pw:focus-within{z-index:5}
+.hstl__pin{position:absolute;left:-14px;top:-14px;width:28px;height:28px;border-radius:50%;
+  border:0;padding:0;cursor:pointer;background:rgba(255,255,255,.92);box-shadow:0 2px 8px rgba(0,0,0,.25);outline:0;
   display:grid;place-items:center;transition:transform .15s ease,background .15s ease}
 .hstl__pin::after{content:"";width:8px;height:8px;border-radius:50%;background:var(--hstl-pin);transition:background .15s}
 .hstl__pin:hover{transform:scale(1.12)}
 .hstl__pin:focus-visible{outline:2px solid #fff;outline-offset:3px}
-.hstl__pin[aria-pressed="true"]{background:var(--hstl-pin);box-shadow:0 0 0 2px #fff,0 2px 10px rgba(0,0,0,.3)}
-.hstl__pin[aria-pressed="true"]::after{background:#fff}
-.hstl__pin[aria-pressed="true"]::before{content:"";position:absolute;inset:-9px;border-radius:50%;border:1.5px solid rgba(255,255,255,.65);animation:hstl-pulse 1.8s ease-out infinite}
+.hstl__pw:hover .hstl__pin,.hstl__pw:focus-within .hstl__pin{background:var(--hstl-pin);box-shadow:0 0 0 2px #fff,0 2px 10px rgba(0,0,0,.3)}
+.hstl__pw:hover .hstl__pin::after,.hstl__pw:focus-within .hstl__pin::after{background:#fff}
+/* pulse ring: only on the active pin (hover / focus here, default + card hover in the module rules) */
+.hstl__pin::before{content:"";position:absolute;inset:-9px;border-radius:50%;border:1.5px solid rgba(255,255,255,.65);opacity:0}
+.hstl__pw:hover .hstl__pin::before,.hstl__pw:focus-within .hstl__pin::before{animation:hstl-pulse 1.8s ease-out infinite}
 @keyframes hstl-pulse{from{transform:scale(.7);opacity:1}to{transform:scale(1.25);opacity:0}}
-@media (prefers-reduced-motion:reduce){.hstl__pin[aria-pressed="true"]::before{animation:none}}
+@media (prefers-reduced-motion:reduce){.hstl__pin::before{animation:none!important;opacity:1}}
 
-/* Popover (glass card from Figma "Product card") */
-.hstl__pop{position:absolute;z-index:3;width:248px;padding:20px;border-radius:4px;border:1px solid #fff;
+/* Popover (glass card from Figma "Product card"): beside the pin, flipped near the edges by the renderer */
+.hstl__pop{--hstl-pop-t:translateY(-50%);position:absolute;left:28px;top:0;z-index:3;width:248px;padding:20px;border-radius:4px;border:1px solid #fff;
   background:rgba(255,255,255,.6);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);
   display:flex;flex-direction:column;gap:4px;font-size:16px;line-height:28px;color:var(--hstl-text);
-  text-decoration:none;opacity:0;transform:translateY(4px);transition:opacity .18s,transform .18s;pointer-events:none}
-.hstl__pop.is-open{opacity:1;transform:none;pointer-events:auto}
+  text-decoration:none;opacity:0;visibility:hidden;transform:var(--hstl-pop-t) translateY(4px);transition:opacity .18s,transform .18s,visibility .18s;pointer-events:none}
+.hstl__pop::before{content:"";position:absolute;top:0;bottom:0;left:-30px;width:30px} /* hover bridge pin → popover */
+.hstl__pw--l .hstl__pop{left:auto;right:28px}
+.hstl__pw--l .hstl__pop::before{left:auto;right:-30px}
+.hstl__pw--t .hstl__pop{--hstl-pop-t:none;top:-20px}
+.hstl__pw--b .hstl__pop{--hstl-pop-t:none;top:auto;bottom:-20px}
+.hstl__pw:hover .hstl__pop,.hstl__pw:focus-within .hstl__pop{opacity:1;visibility:visible;transform:var(--hstl-pop-t);pointer-events:auto}
 .hstl__pop-name{font-weight:400;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .hstl__pop-price{font-weight:500;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
 .hstl__pop-cta{font-weight:500;text-decoration:underline;line-height:24px}
@@ -53,12 +64,14 @@
   text-decoration:underline;text-underline-offset:3px;white-space:nowrap;text-shadow:0 1px 6px rgba(0,0,0,.35)}
 
 /* Color Block + highlight card */
-.hstl__block{flex:0 0 auto;width:var(--hstl-s-block-w,23.18%);min-width:300px;background:var(--hstl-block);display:flex;align-items:center;justify-content:center;padding:40px clamp(24px,4.2vw,80px)}
-.hstl__hl{width:100%;max-width:285px;display:flex;flex-direction:column;gap:8px;color:inherit;text-decoration:none}
+.hstl__block{flex:0 0 auto;width:var(--hstl-s-block-w,23.18%);min-width:300px;background:var(--hstl-block);display:grid;align-items:center;justify-items:center;padding:40px clamp(24px,4.2vw,80px)}
+/* every product has its highlight card stacked in the same cell; the active one is shown (module :has() rules) */
+.hstl__hl{grid-area:1/1;width:100%;max-width:285px;display:flex;flex-direction:column;gap:8px;color:inherit;text-decoration:none;opacity:0;visibility:hidden;transition:opacity .2s,visibility .2s}
+@supports not selector(:has(*)){.hstl__hl.is-default{opacity:1;visibility:visible}}
 .hstl__hl-img{aspect-ratio:var(--hstl-s-card-ratio,285/380);background:var(--hstl-card-bg);position:relative;overflow:hidden}
 .hstl__hl-img img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;transition:opacity .2s}
 .hstl__hl-name{font-weight:600;font-size:16px;line-height:28px}
-.hstl__hl-desc{font-size:14px;line-height:24px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hstl__hl-desc{display:block;font-size:14px;line-height:24px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* Prices + badges */
 .hstl__price{display:flex;gap:8px;align-items:center;white-space:nowrap}
@@ -73,22 +86,17 @@
 
 /* Products list / carousel */
 .hstl__list{position:relative;background:var(--hstl-list-bg);padding:var(--hstl-s-list-pad-d,118px) var(--hstl-gutter)}
-.hstl__track{display:flex;gap:var(--hstl-s-row-gap-d,12px);overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;scroll-behavior:smooth}
-.hstl__track::-webkit-scrollbar{display:none}
+.hstl__track{display:flex;gap:var(--hstl-s-row-gap-d,12px);overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;padding-bottom:12px;scrollbar-width:thin;scrollbar-color:#aeaeae transparent}
+.hstl__track::-webkit-scrollbar{height:4px}.hstl__track::-webkit-scrollbar-thumb{background:#aeaeae;border-radius:4px}
 .hstl__card{flex:0 0 var(--hstl-s-card-w-d,285px);min-width:0;scroll-snap-align:start;display:flex;flex-direction:column;gap:8px;color:inherit;text-decoration:none;cursor:pointer}
 .hstl__card-img{position:relative;aspect-ratio:var(--hstl-s-card-ratio,285/380);background:var(--hstl-card-bg);overflow:hidden}
 .hstl__card-img img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:transform .4s}
 .hstl__card:hover .hstl__card-img img{transform:scale(1.03)}
 .hstl__card-img::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--hstl-text);transform:scaleX(0);transform-origin:left;transition:transform .25s}
-.hstl__card.is-active .hstl__card-img::after{transform:scaleX(1)}
+.hstl__card:hover .hstl__card-img::after{transform:scaleX(1)}
 .hstl__card-name{font-weight:500;font-size:var(--hstl-s-name-d,16px);line-height:var(--hstl-s-name-d-lh,28px);display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
-.hstl__card-desc{font-size:12px;line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hstl__card-desc{display:block;font-size:12px;line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hstl__card .hstl__price b{font-weight:500}
-.hstl__arrow{position:absolute;top:50%;transform:translateY(-50%);width:42px;height:42px;border-radius:43px;border:0;
-  background:var(--hstl-arrow);display:grid;place-items:center;cursor:pointer;z-index:2;transition:opacity .2s}
-.hstl__arrow[disabled]{opacity:0;pointer-events:none}
-.hstl__arrow--prev{left:32px}.hstl__arrow--next{right:24px}
-.hstl__arrow svg{width:16px;height:16px}
 
 /* Mobile (Figma 375) */
 @media (max-width:767px){
@@ -98,7 +106,10 @@
   .hstl__inspo{flex-direction:column}
   .hstl__stage{aspect-ratio:var(--hstl-s-stage-m,375/396)}
   .hstl__block{display:none}
-  .hstl__pop{width:200px;padding:12px 14px;font-size:14px;line-height:22px}
+  /* mobile popover: full width of the image (container units), below the pin in the top half, above it in the bottom half */
+  .hstl__pop,.hstl__pw--l .hstl__pop{--hstl-pop-t:none;left:calc(12px - var(--x,50) * 1cqw);right:auto;width:calc(100cqw - 24px);padding:12px 14px;font-size:14px;line-height:22px;top:auto;bottom:24px}
+  .hstl__pw--mb .hstl__pop{top:24px;bottom:auto}
+  .hstl__pop::before{display:none}
   .hstl__pop .hstl__price b{font-size:14px;line-height:22px}
   .hstl__stage .hstl__cta{display:none}
   .hstl__cta--below{display:block}
@@ -107,7 +118,6 @@
   .hstl__card{flex-basis:var(--hstl-s-card-w-m,160px)}
   .hstl__card-name{font-size:var(--hstl-s-name-m,16px);line-height:var(--hstl-s-name-m-lh,28px)}
   .hstl__card-desc{font-size:14px;line-height:24px}
-  .hstl__arrow--prev{left:16px}.hstl__arrow--next{right:16px}
 }
 
 /* ================= Moodboard layout (Figma "Shop the Look" 9060:8542) ================= */
@@ -122,8 +132,8 @@
 .hstl__btn--pri{background:var(--hstl-s-btn-bg,#181818);border-color:var(--hstl-s-btn-bg,#181818);color:var(--hstl-s-btn-fg,#fff)}
 .hstl__btn:hover{opacity:.85}
 .hstl__btn:disabled{opacity:.5;cursor:default}
-.hstl--no-cart [data-act="cart"],.hstl--no-wishlist [data-act="wishlist"],.hstl--no-wishlist [data-item="wishlist"],.hstl--no-cart [data-item="cart"]{display:none}
-.hstl--no-cart.hstl--no-wishlist .hstl__mactions{display:none}
+/* cart / wishlist buttons need the storefront (no JS in Raw HTML): hidden on the site until it removes .hstl--no-actions */
+.hstl--no-actions [data-hstl-action],.hstl--no-actions .hstl__mactions{display:none!important}
 
 /* desktop ≥ 1024: image | 2×2 products */
 .hstl__mbody{display:grid;grid-template-columns:minmax(0,var(--hstl-s-img-fr,1fr)) minmax(0,var(--hstl-s-grid-fr,1fr));gap:var(--hstl-s-body-gap-d,40px);padding:0 var(--hstl-gutter);align-items:start}
@@ -139,7 +149,7 @@
 .hstl__mcard-img img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .4s}
 .hstl__mcard:hover .hstl__mcard-img img{transform:scale(1.03)}
 .hstl__mcard-img::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--hstl-text);transform:scaleX(0);transform-origin:left;transition:transform .25s;pointer-events:none}
-.hstl__mcard.is-active .hstl__mcard-img::after{transform:scaleX(1)}
+.hstl__mcard:hover .hstl__mcard-img::after{transform:scaleX(1)}
 .hstl__mcard .hstl__badges{left:8px;bottom:8px}
 .hstl__icon{position:absolute;right:8px;width:42px;height:42px;padding:0;border:0;background:rgba(255,255,255,.4);display:grid;place-items:center;cursor:pointer;z-index:1;transition:background .15s}
 .hstl__icon:hover{background:rgba(255,255,255,.75)}
@@ -147,7 +157,6 @@
 .hstl__icon--wish{top:8px}
 .hstl__icon--cart{bottom:8px}
 .hstl__icon--wish[aria-pressed="true"] path{fill:#181818}
-.hstl__icon.is-done{background:#fff}
 .hstl__mcard-txt{display:flex;flex-direction:column;color:var(--hstl-text);text-decoration:none;min-width:0}
 .hstl__mcard-txt .hstl__card-name{font-weight:500;font-size:var(--hstl-s-name-d,16px);line-height:var(--hstl-s-name-d-lh,28px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
 .hstl__mcard-txt .hstl__card-desc{font-size:12px;line-height:24px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
