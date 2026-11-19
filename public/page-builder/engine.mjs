@@ -768,15 +768,24 @@ const button = (cta, cls, market, arrow = false) => {
 };
 const badgeHtml = (b) => `<span class="bd${b.tone === "brand" ? " bd-brand" : b.tone === "success" ? " bd-success" : ""}">${esc(b.label)}</span>`;
 
-export function productCard(p, market = "pt", showBadges = true) {
+// index = position in its list (1-based, for GA4); data-item-* are read by the FeedForge GTM tag (public/tracking/ff-tracking.js)
+export function productCard(p, market = "pt", showBadges = true, index = 0) {
   const href = isHttpsUrl(p.url) ? p.url : "";
   const d = discount(p.price, p.listPrice);
   const tag = href ? "a" : "div";
-  const attrs = `class="pc"${href ? ` href="${esc(href)}"` : ""} data-item-id="${esc(p.id)}" data-item-name="${esc(p.name)}" data-item-price="${(Number(p.price) || 0).toFixed(2)}"`;
+  const cat = Array.isArray(p.path) && p.path.length ? ` data-item-cat="${esc(p.path.join(" > "))}"` : "";
+  const attrs = `class="pc"${href ? ` href="${esc(href)}"` : ""} data-item-id="${esc(p.id)}" data-item-name="${esc(p.name)}" data-item-price="${(Number(p.price) || 0).toFixed(2)}"${index ? ` data-item-index="${index}"` : ""}${cat}`;
   return `<${tag} ${attrs}><span class="pc-img">${isHttpsUrl(p.image) ? `<img src="${esc(p.image)}" alt="${esc(p.name)}" width="285" height="380" loading="lazy" decoding="async">` : ""}${showBadges && p.badges?.length ? `<span class="pc-bd">${p.badges.slice(0, 2).map(badgeHtml).join("")}</span>` : ""}</span>`
     + `<span class="pc-txt"><span class="pc-n">${esc(p.name)}</span>${p.description ? `<span class="pc-d">${esc(p.description)}</span>` : ""}</span>`
     + `<span class="pc-p"><b>${esc(money(p.price, market))}</b>${p.listPrice && d > 0 ? `<s>${esc(money(p.listPrice, market))}</s><em>-${d}%</em>` : ""}</span></${tag}>`;
 }
+
+// GA4 list of a product block / products node: data-ff-list-id + data-ff-list-name on its container
+const listAttrs = (ctx, b, n = null, label = "") => {
+  const id = `pb_${ctx.eid || "el"}_${b.id}${n ? `_${n.id}` : ""}`.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 100);
+  const name = `${ctx.elName || ctx.eid || "Page Builder"} - ${label || BLOCKS[b.type]?.label || "Produtos"}`.slice(0, 100);
+  return ` data-ff-list-id="${esc(id)}" data-ff-list-name="${esc(name)}"`;
+};
 
 export const visibleProducts = (b, products = {}) => (products[b.id] || []).filter((p) => p && !p.missing && !p.oos).slice(0, b.props.limit || 8);
 
@@ -818,12 +827,12 @@ function renderBlockInner(b, ctx) {
       const list = visibleProducts(b, ctx.products);
       const head = P.title ? `<div class="pg-h"><h2 class="t-d3">${esc(P.title)}</h2>${button(P.viewAll, "lnk", market)}</div>` : "";
       const foot = !P.title && P.viewAll?.label ? `<div class="pg-va">${button(P.viewAll, "btn btn-s", market)}</div>` : "";
-      return `${head}<div class="pg">${list.map((p) => productCard(p, market, P.showBadges)).join("") || (preview ? `<div class="ph" style="grid-column:1/-1;min-height:120px">Sem produtos — escolhe produtos ou ajusta a regra</div>` : "")}</div>${foot}`;
+      return `${head}<div class="pg"${listAttrs(ctx, b, null, P.title)}>${list.map((p, j) => productCard(p, market, P.showBadges, j + 1)).join("") || (preview ? `<div class="ph" style="grid-column:1/-1;min-height:120px">Sem produtos — escolhe produtos ou ajusta a regra</div>` : "")}</div>${foot}`;
     }
     case "product-carousel": {
       const list = visibleProducts(b, ctx.products);
       const arrows = ctx.caps?.js && list.length > 4 ? `<button type="button" class="arr arr-l hm" aria-label="Anterior" data-hpb-dir="-1"><svg viewBox="0 0 16 16"><path d="M10 3 5 8l5 5"/></svg></button><button type="button" class="arr arr-r hm" aria-label="Seguinte" data-hpb-dir="1"><svg viewBox="0 0 16 16"><path d="m6 3 5 5-5 5"/></svg></button>` : "";
-      return `${P.title ? `<div class="car-h"><h2 class="t-d3">${esc(P.title)}</h2></div>` : ""}<div class="car-w"><div class="car">${list.map((p) => productCard(p, market, P.showBadges)).join("") || (preview ? `<div class="ph" style="min-height:120px">Sem produtos — escolhe produtos ou ajusta a regra</div>` : "")}</div>${arrows}</div>`;
+      return `${P.title ? `<div class="car-h"><h2 class="t-d3">${esc(P.title)}</h2></div>` : ""}<div class="car-w"><div class="car"${listAttrs(ctx, b, null, P.title)}>${list.map((p, j) => productCard(p, market, P.showBadges, j + 1)).join("") || (preview ? `<div class="ph" style="min-height:120px">Sem produtos — escolhe produtos ou ajusta a regra</div>` : "")}</div>${arrows}</div>`;
     }
     case "composition":
       return renderNode(b.props.tree, ctx, b);
@@ -935,8 +944,8 @@ function renderNode(n, ctx, b) {
     case "icon": return `<svg class="c-ic s${n.size}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n.icon] || ""}</svg>`;
     case "products": {
       const list = visibleSlot(slotKey(b, n), n.limit, ctx.products);
-      const cards = list.map((p) => productCard(p, market, n.showBadges).replace('class="pc"', `class="pc${n.card === "highlight" ? " pc-hl" : ""}"`)).join("");
-      return `<div class="c-prod n-${n.id}${n.layout === "scroll" ? " sc" : ""}">${cards || (preview ? `<div class="ph" style="grid-column:1/-1;min-height:120px">Sem produtos — escolhe produtos ou ajusta a regra</div>` : "")}</div>`;
+      const cards = list.map((p, j) => productCard(p, market, n.showBadges, j + 1).replace('class="pc"', `class="pc${n.card === "highlight" ? " pc-hl" : ""}"`)).join("");
+      return `<div class="c-prod n-${n.id}${n.layout === "scroll" ? " sc" : ""}"${list.length ? listAttrs(ctx, b, n) : ""}>${cards || (preview ? `<div class="ph" style="grid-column:1/-1;min-height:120px">Sem produtos — escolhe produtos ou ajusta a regra</div>` : "")}</div>`;
     }
     case "divider": return `<hr class="c-hr">`;
     case "spacer": return `<div class="c-sp n-${n.id}"></div>`;
@@ -1035,7 +1044,7 @@ export function renderElement(el, { products = {}, preview = false, caps = { js:
   const mw = [...new Set(blocks.filter((b) => b.type === "text-block").map((b) => b.props.maxWidth))].map((w) => `& .mw${w}{max-width:${w}px}`).join("");
   const css = tokenVars(minCss([BASE_CSS, needsCard ? CARD_CSS : "", ...types.map((t) => (t === "composition" ? PRIM_CSS : BLOCK_CSS[t] || "")), mw, spacingCss(blocks), ...blocks.map(blockCss)].join("\n"))).replaceAll("&", root);
   const body = blocks.map((b, i) => {
-    const inner = renderBlockInner(b, { market, preview, products, caps, index: i });
+    const inner = renderBlockInner(b, { market, preview, products, caps, index: i, eid, elName: el.name || "" });
     const anchor = b.props.anchor ? ` id="${esc(b.props.anchor)}"` : "";
     return `<div class="${wrapClasses(b)}"${anchor} data-hpb-block="${esc(b.type)}" data-hpb-index="${i}"><div class="hpb-in">${inner}</div></div>`;
   }).join("");
