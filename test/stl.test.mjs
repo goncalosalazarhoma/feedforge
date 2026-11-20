@@ -89,11 +89,24 @@ v = ctx.hstlValidate(okMod, { ...cfg, products: cfg.products.filter((p) => !p.mi
 assert.equal(v.ok, true);
 assert.equal(ctx.hstlValidate({ ...okMod, image: { src: "" } }, cfg).ok, false, "image required");
 assert.equal(ctx.hstlValidate({ ...okMod, products: okMod.products.slice(0, 1) }, cfg).ok, false, "2 products minimum");
-const snip = ctx.hstlSnippet({ css: ".hstl{}", js: "/*js*/", config: { ...cfg, title: "</script><b>" }, name: "HP" });
-assert.ok(snip.includes('<section class="hstl" data-stl-id="stl-hp-outono-inverno"'));
-assert.ok(!snip.includes("</script><b>"), "config JSON is escaped inside the script tag");
-const json = JSON.parse(snip.match(/data-stl-config="[^"]+">([\s\S]*?)<\/script>/)[1]);
-assert.ok(!json.products.some((p) => p.missing), "missing products not exported");
+// static renderer (Page Designer Raw HTML: no JavaScript) — what the editor previews and exports
+const R = await import("../public/stl/render.mjs");
+const WCSS = fs.readFileSync(new URL("../public/stl/widget.css", import.meta.url), "utf8");
+const evilCfg = { ...cfg, title: "</style><script>alert(1)</script>", products: cfg.products.map((p, i) => (i === 0 ? { ...p, name: '"><img src=x onerror=alert(2)>' } : p)), vars: { "--hstl-s-pad-top-d": "40px", "--hstl-s-x": "red;}body{display:none", "--evil": "1px" } };
+const html = R.renderStl(evilCfg, { css: WCSS });
+const snip = ctx.hstlSnippet({ html, name: "HP" });
+assert.ok(!/<script/i.test(snip), "no <script> in the exported code");
+assert.ok(!/\sstyle="/.test(snip), "no inline styles (positions and overrides live in the module <style>)");
+assert.ok((snip.replace(/<style>[\s\S]*?<\/style>/, "").match(/<[a-z][^>]*>/gi) || []).every((t) => !/\son[a-z]+\s*=/i.test(t.replace(/"[^"]*"/g, '""'))), "no event handler attributes (text is escaped)");
+assert.ok(snip.includes('id="hstl-stl-hp-outono-inverno"') && snip.includes('data-ff-list-id="stl_stl-hp-outono-inverno"'), "module id + GA4 list id");
+assert.ok(snip.includes('data-ff-list-name="Shop the Look - HP · Outono/Inverno"'), "GA4 list name = module name");
+assert.ok(!snip.includes("999999") && !snip.includes('data-item-id="453245"'), "missing and out-of-stock products are not exported");
+assert.ok(snip.includes('data-item-id="473088"') && snip.includes('data-item-price="15.00"') && snip.includes('data-item-index="1"') && snip.includes('data-item-cat="Decoração &gt; Almofadas"'), "tracking attributes on the products");
+assert.ok(snip.includes("#hstl-stl-hp-outono-inverno .hstl__pw--0{left:53%;top:59%"), "pin position as a module CSS rule");
+assert.ok(snip.includes("--hstl-s-pad-top-d:40px") && !snip.includes("display:none}body") && !snip.includes("--evil"), "only whitelisted variables reach the CSS");
+assert.ok(snip.includes("&lt;/style&gt;&lt;script&gt;") && snip.includes("&quot;&gt;&lt;img src=x onerror=alert(2)&gt;"), "texts escaped");
+assert.ok(/#hstl-stl-hp-outono-inverno:has\(\.hstl__c--1:hover\) \.hstl__pw--1 \.hstl__pop/.test(snip), "card hover opens its pin's popover (CSS :has)");
+assert.ok(snip.includes("hstl__hl--0 is-default"), "Color Block highlight for the default product");
 console.log("Export OK");
 
 // ---- moodboard layout: stored, rendered, validated, exported
@@ -113,11 +126,11 @@ v = ctx.hstlValidate(mb, mcfg);
 assert.equal(v.ok, true); assert.ok(!v.warnings.some((w) => /moodboard/.test(w)), "4 products: no layout warning");
 v = ctx.hstlValidate({ ...mb, products: mb.products.slice(0, 3) }, { ...mcfg, products: mcfg.products.slice(0, 3) });
 assert.ok(v.warnings.some((w) => /4 produtos.*espaço vazio/.test(w)), "odd count warns about the 2×2 grid");
-const msnip = ctx.hstlSnippet({ css: ".hstl{}", js: "/*js*/", config: mcfg, name: "Mood" });
-assert.equal(JSON.parse(msnip.match(/data-stl-config="[^"]+">([\s\S]*?)<\/script>/)[1]).layout, "moodboard", "layout travels in the exported config");
-// widget: both layouts mount and the moodboard exposes setHandlers
-const wjs = fs.readFileSync(new URL("../public/stl/widget.js", import.meta.url), "utf8");
-assert.ok(/function mountMood/.test(wjs) && /setHandlers/.test(wjs) && /hstl:\$\{kind\}/.test(wjs), "moodboard renderer, handlers and DOM events present");
+const mhtml = R.renderStl({ ...mcfg, actions: { show: true } }, { css: WCSS });
+assert.ok(mhtml.includes('class="hstl hstl--mood hstl--no-actions"'), "moodboard: cart/wishlist hidden on the site (no JS)");
+assert.ok(R.renderStl({ ...mcfg, actions: { show: true } }, { css: "", preview: true }).includes('class="hstl hstl--mood"'), "preview shows the buttons");
+assert.equal((mhtml.match(/class="hstl__mcard /g) || []).length, 4, "4 product cards");
+assert.ok(mhtml.includes('data-hstl-action="cart" data-scope="all"'), "hooks for the storefront if it wires the cart later");
 console.log("Moodboard OK");
 
 // ---- visual editor (style overrides → CSS variables)
@@ -134,7 +147,22 @@ assert.deepEqual(mb.style, { "grid-gap-x": 24, "btn-bg": "#583d3e" }, "style sto
 const scfg = (await call("GET", `/stl/render/${mb.id}`)).json;
 assert.deepEqual(scfg.vars, { "--hstl-s-grid-gap-x": "24px", "--hstl-s-btn-bg": "#583d3e" }, "render carries the CSS variables");
 assert.deepEqual((await call("GET", `/stl/render/${m.id}`)).json.vars, {}, "no overrides → no variables");
-assert.ok(/VAR_NAME = .*--hstl-s-/.test(wjs) && /applyVars\(root/.test(wjs), "widget whitelists the variables it applies");
+assert.ok(R.renderStl({ ...scfg }, { css: "" }).includes("#hstl-" + mb.id + "{--hstl-s-grid-gap-x:24px;--hstl-s-btn-bg:#583d3e}"), "overrides written as a module CSS rule");
 console.log("Aparência OK");
+
+// tracking tag (lives in the site's GTM): valid JS, reads the same attributes the renderers write
+const TJS = fs.readFileSync(new URL("../public/tracking/ff-tracking.js", import.meta.url), "utf8");
+new vm.Script(TJS);
+for (const a of ["data-ff-list-id", "data-ff-list-name", "data-item-id", "data-item-name", "data-item-price", "data-item-index", "data-item-cat", "data-ff-pin", "view_item_list", "select_item"]) assert.ok(TJS.includes(a), `tracking tag uses ${a}`);
+// export-test.html: both layouts as they are exported (open on the dev site / locally to check)
+const ET = new URL("../public/stl/export-test.html", import.meta.url);
+const demo = (layout) => ({ ...cfg, id: `demo-${layout}`, name: `Demo ${layout}`, layout, title: "Coleção de Natal", eyebrow: "Shop the look", image: { src: "https://www.homastores.com/dw/image/v2/BFDH_PRD/on/demandware.static/-/Sites-Homa_PT-Library/default/dwd87779c6/home/shoplook/hp-shop-trend-image_solidcolor.webp?sw=1920&q=80", alt: "Sala decorada" }, products: cfg.products.filter((p) => !p.missing && !p.oos).slice(0, 4) });
+const exHtml = [R.renderStl(demo("classic"), { css: WCSS }), R.renderStl(demo("moodboard"), { css: WCSS })].map((h, i) => ctx.hstlSnippet({ html: h, name: i ? "Demo moodboard" : "Demo clássico" }).replace(/ gerado pelo FeedForge em [0-9: -]+/, ""));
+if (process.env.UPDATE_SNAPSHOTS || !fs.existsSync(ET) || /HomaShopTheLook/.test(fs.readFileSync(ET, "utf8"))) {
+  fs.writeFileSync(ET, `<!doctype html>\n<html lang="pt">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>Shop the Look · teste do código exportado</title>\n<style>body{margin:0;font-family:Gilroy,"Helvetica Neue",Arial,sans-serif}</style>\n</head>\n<body>\n<!-- Cada bloco abaixo é exatamente o que o "Gerar código" produz (Raw HTML: HTML + CSS, sem JavaScript) -->\n${exHtml.join("\n<div style=\"height:80px\"></div>\n")}\n</body>\n</html>\n`);
+  console.log("export-test.html escrito");
+}
+assert.ok(exHtml.every((h) => fs.readFileSync(ET, "utf8").includes(h)), "export-test.html = current renderer output (UPDATE_SNAPSHOTS=1 to rewrite)");
+console.log("Tracking OK");
 
 console.log("\n✅ testes Shop the Look passaram");

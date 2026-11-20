@@ -631,6 +631,7 @@
       <div class="head"><div><a href="#" id="pb-back" class="small">← Voltar ao editor</a><h1 style="margin:4px 0 0">Gerar HTML · ${esc(PB.el.name)}</h1><div class="small muted">${esc(MARKETS[PB.el.market])} · ${esc(PAGES[PB.el.page])}${dirty() ? ` · <b style="color:var(--warn)">alterações por guardar</b>` : ""}</div></div>
         <div class="row"><button class="btn" id="pb-regen">Validar e gerar de novo</button><button class="btn" id="pb-dl" disabled>Descarregar .html</button><button class="btn primary" id="pb-copyhtml" disabled>Copiar HTML</button></div></div>
       <div id="pb-val" class="card"><p class="muted">A validar e a resolver os produtos no feed…</p></div>
+      <p class="small muted" style="margin:8px 0">Tracking: os blocos de produtos levam os atributos de lista e de produto; com a tag do FeedForge no GTM do site (uma vez, <a href="/tracking/" target="_blank">instruções e código</a>) enviam <code>view_item_list</code> e <code>select_item</code> no formato GA4 do site.</p>
       <div id="pb-outbox"></div>`;
     $("#pb-back").onclick = (e) => { e.preventDefault(); PB.screen = "edit"; drawWorkspace(main); };
     const run = () => guard(async () => {

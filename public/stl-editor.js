@@ -1,4 +1,6 @@
-/* FeedForge — Shop the Look editor (modules for the SFCC storefront, products from the FeedForge feed). */
+/* FeedForge — Shop the Look editor (modules for the SFCC storefront, products from the FeedForge feed).
+   The module is exported as static HTML + CSS (public/stl/render.mjs) because Page Designer Raw HTML does not run JavaScript;
+   the preview uses the same renderer, so what you see is what goes to the site. */
 (() => {
   "use strict";
   const { $, $$, esc, toast, guard, ask, api, VIEWS, ProductPicker: PP } = window.FF;
@@ -31,8 +33,8 @@
 
   async function assets() {
     if (!ST.assets) {
-      const [css, js] = await Promise.all(["/stl/widget.css", "/stl/widget.js"].map((u) => fetch(u, { cache: "no-cache" }).then((r) => r.text())));
-      ST.assets = { css, js };
+      const [css, R] = await Promise.all([fetch("/stl/widget.css", { cache: "no-cache" }).then((r) => r.text()), import("/stl/render.mjs")]);
+      ST.assets = { css, render: R.renderStl };
     }
     return ST.assets;
   }
@@ -44,14 +46,14 @@
   function hydrateLocal() {
     const m = ST.mod, cache = ST.pcache[m.market];
     return {
-      id: m.id || "stl-preview", locale: m.market === "es" ? "es-ES" : "pt-PT", currency: "EUR",
+      id: m.id || "stl-preview", name: m.name, locale: m.market === "es" ? "es-ES" : "pt-PT", currency: "EUR",
       eyebrow: m.eyebrow, title: m.title, image: m.image, blockColor: m.blockColor, cta: m.cta, popoverCta: m.popoverCta, activeIndex: m.activeIndex,
       layout: m.layout || "classic", actions: m.actions || { show: true }, preview: true,
       vars: SCHEMA ? SCHEMA.styleVars(m.style || {}, m.layout || "classic") : {},
       products: m.products.map((ref) => {
         const p = cache[ref.id];
         if (!p) return { id: ref.id, name: ref.id, description: "", price: 0, listPrice: null, image: "", url: "#", badges: ref.badges, pin: ref.pin, missing: true, ...(p === undefined ? { loading: true } : {}) };
-        return { id: p.id, name: p.title, description: p.description, price: p.salePrice ?? p.price ?? 0, listPrice: p.salePrice ? p.price : null, image: p.image, url: p.link, badges: ref.badges, pin: ref.pin, ...(p.inStock ? {} : { oos: true }) };
+        return { id: p.id, name: p.title, description: p.description, price: p.salePrice ?? p.price ?? 0, listPrice: p.salePrice ? p.price : null, image: p.image, url: p.link, path: p.path || [], badges: ref.badges, pin: ref.pin, ...(p.inStock ? {} : { oos: true }) };
       }),
     };
   }
@@ -145,14 +147,14 @@
     if (!quiet) { toast("Guardado"); drawEditor(main); }
   }
 
-  // ------------------------------------------------------------------ preview (iframe = real widget, so the 767px media query works at 375px)
+  // ------------------------------------------------------------------ preview (iframe at the device width, so the media queries match the site)
   async function buildFrame() {
-    const { css, js } = await assets();
+    await assets();
     const f = $("#stl-frame");
     if (!f) return;
-    f.srcdoc = `<!doctype html><html lang="pt"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>${FONTS}body{margin:0;background:#fff}${css}
-      body.moving .hstl__pin{cursor:move;touch-action:none} body.moving .hstl__pop{pointer-events:none!important}</style></head>
-      <body><section class="hstl" id="stl-p" aria-label="Shop the Look"></section><script>${js.replace(/<\/script/gi, "<\\/script")}<\/script></body></html>`;
+    f.srcdoc = `<!doctype html><html lang="pt"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>${FONTS}body{margin:0;background:#fff}
+      body.moving .hstl__pin{cursor:move;touch-action:none} body.moving .hstl__pop{display:none!important}</style></head>
+      <body><div id="stl-p"></div></body></html>`;
     f.onload = () => { ST.frame = f; preview(); const ro = new f.contentWindow.ResizeObserver(fitFrame); ro.observe(f.contentDocument.body); };
     fitFrame();
     ST.fitRO ||= new ResizeObserver(fitFrame);
@@ -184,10 +186,11 @@
     clearTimeout(pv);
     pv = setTimeout(() => {
       const f = ST.frame;
-      if (!f || !f.contentWindow?.HomaShopTheLook || !ST.mod) return;
+      const box = f?.contentDocument?.getElementById("stl-p");
+      if (!box || !ST.assets || !ST.mod) return;
       const cfg = hydrateLocal();
-      const sec = f.contentDocument.getElementById("stl-p");
-      f.contentWindow.HomaShopTheLook.mount(sec, cfg);
+      box.innerHTML = ST.assets.render(cfg, { css: ST.assets.css, preview: true });
+      const sec = box.firstElementChild;
       f.contentDocument.body.classList.toggle("moving", ST.moving);
       if (ST.moving) enablePinDrag(f, sec, cfg);
       const miss = cfg.products.filter((p) => p.missing && !p.loading).map((p) => p.id), oos = cfg.products.filter((p) => p.oos).map((p) => p.id);
@@ -200,15 +203,16 @@
   function enablePinDrag(f, sec, cfg) {
     const visible = cfg.products.map((p, i) => (!p.missing && !p.oos ? i : -1)).filter((i) => i >= 0); // widget index -> module index
     const stage = sec.querySelector(".hstl__stage");
-    sec.querySelectorAll(".hstl__pin").forEach((pin) => {
+    sec.querySelectorAll(".hstl__pw").forEach((pw) => {
+      const pin = pw.querySelector(".hstl__pin");
       pin.addEventListener("pointerdown", (e) => {
         e.preventDefault(); e.stopPropagation();
-        const mi = visible[+pin.dataset.i];
+        const mi = visible[+(pw.className.match(/hstl__pw--(\d+)/) || [])[1]];
         pin.setPointerCapture(e.pointerId);
         const move = (ev) => {
           const r = stage.getBoundingClientRect();
           const x = Math.max(0, Math.min(100, ((ev.clientX - r.left) / r.width) * 100)), y = Math.max(0, Math.min(100, ((ev.clientY - r.top) / r.height) * 100));
-          pin.style.left = x + "%"; pin.style.top = y + "%";
+          pw.style.left = x + "%"; pw.style.top = y + "%";
           ST.mod.products[mi].pin.x = Math.round(x * 10) / 10; ST.mod.products[mi].pin.y = Math.round(y * 10) / 10;
         };
         const up = () => { pin.removeEventListener("pointermove", move); pin.removeEventListener("pointerup", up); markDirty(); preview(); if (ST.tab === "produtos") drawLook(); };
@@ -431,18 +435,13 @@
   // ---------- export
   function drawExport(box) {
     box.innerHTML = `<p class="small muted">O site não consegue chamar o FeedForge, por isso o código leva os produtos já resolvidos com os preços, imagens e links do feed de agora. Volta a gerar quando os preços mudarem.</p>
-      <div class="row"><button class="btn primary" id="stl-gen">Gerar código</button><button class="btn" id="stl-json">Copiar JSON</button><label class="chk small"><input type="checkbox" id="stl-assets" checked/> Incluir CSS + JS (1.º Shop the Look da página)</label></div>
+      <div class="row"><button class="btn primary" id="stl-gen">Gerar código</button><button class="btn" id="stl-json">Copiar JSON</button></div>
       <div id="stl-val" style="margin-top:10px"></div>
       <textarea id="stl-code" rows="14" readonly style="width:100%;font-family:ui-monospace,Menlo,monospace;font-size:11px;margin-top:8px;${ST.exported ? "" : "display:none"}">${esc(ST.exported)}</textarea>
       <div class="row" style="margin-top:6px"><button class="btn sm" id="stl-copy" ${ST.exported ? "" : "hidden"}>Copiar código</button></div>
-      <p class="small muted" style="margin-top:10px">No Page Designer: adiciona um bloco HTML/Custom na página e cola o código. Eventos GA4 no dataLayer: <code>stl_pin_select</code>, <code>stl_product_click</code>${ST.mod.layout === "moodboard" ? ", <code>stl_add_to_cart</code>, <code>stl_add_to_wishlist</code>" : ""}.</p>
-      ${ST.mod.layout === "moodboard" && ST.mod.actions?.show !== false ? `<details class="small" style="margin-top:6px"><summary><b>Ligar o carrinho e os favoritos (equipa SFCC, uma vez)</b></summary>
-        <p class="muted">Um bloco HTML não consegue adicionar ao carrinho sozinho. A equipa regista uma vez no site o que os botões fazem; até lá os botões do cabeçalho e os ícones dos cartões ficam escondidos (o resto do módulo funciona normalmente).</p>
-        <pre style="white-space:pre-wrap;font-size:11px;background:var(--soft);padding:8px;border-radius:6px">window.HomaShopTheLook.setHandlers({
-  cart: async (items, ctx) =&gt; { /* items: [{ id, name, price, url }]; ctx.scope: "all" | "item" */ },
-  wishlist: async (items, ctx) =&gt; { /* … */ },
-});</pre>
-        <p class="muted">Alternativa: ouvir os eventos <code>hstl:cart</code> / <code>hstl:wishlist</code> na secção (<code>event.detail.items</code>) e chamar <code>event.preventDefault()</code>.</p></details>` : ""}`;
+      <p class="small muted" style="margin-top:10px">No Page Designer: componente <b>Raw HTML</b>, cola o código. É só HTML + CSS (o Raw HTML não corre JavaScript): os pins, o popover e o produto em destaque funcionam só com CSS.</p>
+      <p class="small muted"><b>Tracking:</b> com a tag do FeedForge no GTM do site (uma vez, <a href="/tracking/" target="_blank">instruções e código</a>), este módulo envia <code>view_item_list</code> e <code>select_item</code> com <code>item_list_name</code> “Shop the Look - ${esc(ST.mod.name || "")}”, no mesmo formato GA4 do site, e <code>stl_pin_select</code> quando se abre um pin.</p>
+      ${ST.mod.layout === "moodboard" && ST.mod.actions?.show !== false ? `<p class="small muted"><b>Carrinho e favoritos:</b> um bloco Raw HTML não consegue adicionar ao carrinho, por isso estes botões ficam escondidos no site. Se a equipa SFCC quiser ligá-los: remover a classe <code>hstl--no-actions</code> do módulo e tratar os cliques em <code>[data-hstl-action="cart|wishlist"]</code> (<code>data-item-id</code> em cada cartão; <code>data-scope="all"</code> nos botões do cabeçalho).</p>` : ""}`;
     const resolve = async () => {
       const cfg = await api("/stl/render", { method: "POST", body: ST.mod });
       for (const p of cfg.products) if (p.missing) ST.pcache[ST.mod.market][p.id] = null;
@@ -453,8 +452,8 @@
     $("#stl-gen").onclick = (e) => guard(async () => {
       const { cfg, v } = await resolve();
       if (!v.ok) return toast("Corrige os erros antes de exportar", true);
-      const { css, js } = await assets();
-      ST.exported = window.hstlSnippet({ css, js, config: cfg, name: ST.mod.name, includeAssets: $("#stl-assets").checked });
+      const { css, render } = await assets();
+      ST.exported = window.hstlSnippet({ html: render(cfg, { css }), name: ST.mod.name });
       const ta = $("#stl-code"); ta.value = ST.exported; ta.style.display = ""; $("#stl-copy").hidden = false;
       toast(dirty() ? "Código gerado (lembra-te de guardar o módulo)" : "Código gerado");
     }, e.target);
