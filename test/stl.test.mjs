@@ -150,7 +150,7 @@ assert.deepEqual((await call("GET", `/stl/render/${m.id}`)).json.vars, {}, "no o
 assert.ok(R.renderStl({ ...scfg }, { css: "" }).includes("#hstl-" + mb.id + "{--hstl-s-grid-gap-x:24px;--hstl-s-btn-bg:#583d3e}"), "overrides written as a module CSS rule");
 console.log("Aparência OK");
 
-// ---- pins / image cards: classic or design-system variants (Figma "Shop the Look Chips" / "Shop the Look Cards")
+// ---- pins / image cards: classic or design-system variants (Figma "Interactive Dots V2")
 assert.deepEqual([m.pinStyle, m.cardStyle], ["classic", "classic"], "defaults to the classic pins and card");
 let ds = (await call("PUT", `/stl/modules/${m.id}`, { ...m, pinStyle: "ds", cardStyle: "ds" })).json;
 assert.deepEqual([ds.pinStyle, ds.cardStyle], ["ds", "ds"], "variants stored");

@@ -261,10 +261,10 @@
       </div>
       <div class="card" style="padding:10px 12px">
         <div class="grid two">
-          <label class="f">Pontos na imagem<select data-k="pinStyle">${[["classic", "Clássico (pin com ponto)"], ["ds", "Design System (Shop the Look Chips)"]].map(([v, l]) => `<option value="${v}" ${(m.pinStyle || "classic") === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
-          <label class="f">Cartão do produto na imagem<select data-k="cardStyle">${[["classic", "Clássico (vidro, com link)"], ["ds", "Design System (Shop the Look Cards)"]].map(([v, l]) => `<option value="${v}" ${(m.cardStyle || "classic") === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+          <label class="f">Pontos na imagem<select data-k="pinStyle">${[["classic", "Clássico (pin com ponto)"], ["ds", "Design System (Interactive Dots V2)"]].map(([v, l]) => `<option value="${v}" ${(m.pinStyle || "classic") === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+          <label class="f">Cartão do produto na imagem<select data-k="cardStyle">${[["classic", "Clássico (vidro, com link)"], ["ds", "Design System (cartão por baixo do ponto)"]].map(([v, l]) => `<option value="${v}" ${(m.cardStyle || "classic") === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
         </div>
-        ${(m.cardStyle || "classic") === "classic" ? inp("popoverCta", "Texto do link no cartão") : `<p class="small muted" style="margin:6px 0 0">Cartão com imagem, nome e preço (Figma “Shop the Look Cards”). Os botões de favoritos e carrinho aparecem na pré-visualização; no site só depois de a equipa SFCC ligar o carrinho e os favoritos (como no moodboard).</p>`}
+        ${(m.cardStyle || "classic") === "classic" ? inp("popoverCta", "Texto do link no cartão") : `<p class="small muted" style="margin:6px 0 0">Cartão com imagem, nome e preço, logo abaixo do ponto (Figma “Interactive Dots V2”). Os botões de favoritos e carrinho aparecem na pré-visualização; no site só depois de a equipa SFCC ligar o carrinho e os favoritos (como no moodboard).</p>`}
       </div>
       <label class="f">Produto ativo ao abrir<select data-k="activeIndex" data-num="1">${m.products.length ? m.products.map((p, i) => `<option value="${i}" ${m.activeIndex === i ? "selected" : ""}>${i + 1}. ${esc(ST.pcache[m.market][p.id]?.title || p.id)}</option>`).join("") : `<option value="0">— adiciona produtos —</option>`}</select></label>
     </div>`;
