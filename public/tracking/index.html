@@ -27,7 +27,7 @@
   <h2>O que é enviado para o dataLayer</h2>
   <table>
     <tr><th>Evento</th><th>Quando</th><th>Dados</th></tr>
-    <tr><td><code>view_item_list</code></td><td>Quando o módulo / bloco de produtos fica pelo menos 50% visível (uma vez por página)</td><td rowspan="2"><code>ecommerce.item_list_id</code>, <code>item_list_name</code> e <code>items[]</code> com <code>item_id</code>, <code>item_name</code>, <code>price</code>, <code>quantity</code>, <code>index</code>, <code>item_category</code> ("Produtos"), <code>item_category2</code> / <code>item_category3</code> (categoria do feed), <code>item_list_id</code>, <code>item_list_name</code></td></tr>
+    <tr><td><code>view_item_list</code></td><td>Quando o módulo / bloco de produtos fica pelo menos 50% visível, ou ocupa pelo menos metade do ecrã nos blocos mais altos (uma vez por página)</td><td rowspan="2"><code>ecommerce.item_list_id</code>, <code>item_list_name</code> e <code>items[]</code> com <code>item_id</code>, <code>item_name</code>, <code>price</code>, <code>quantity</code>, <code>index</code>, <code>item_category</code> ("Produtos"), <code>item_category2</code> / <code>item_category3</code> (categoria do feed), <code>item_list_id</code>, <code>item_list_name</code></td></tr>
     <tr><td><code>select_item</code></td><td>Clique num produto (cartão, popover do pin, destaque do Color Block)</td></tr>
     <tr><td><code>stl_pin_select</code></td><td>Abrir um pin do Shop the Look (toque, clique ou teclado)</td><td><code>stl_id</code>, <code>item_list_id</code>, <code>item_id</code>, <code>item_name</code></td></tr>
   </table>
