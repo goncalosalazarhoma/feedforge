@@ -206,6 +206,54 @@
   .hstl--mood .hstl__stage .hstl__cta{display:none}
   .hstl--mood .hstl__cta--below{display:block;margin:8px 0 0}
 }
+
+/* ================= Design-system variants (opção por módulo) =================
+   Pontos: Figma "Shop the Look Chips" (9514:22669) · Cartão na imagem: Figma "Shop the Look Cards" (9532:5313) */
+.hstl--pin-ds{--hstl-dot:24px;--hstl-dot-on:24px;--hstl-ring:2px;--hstl-ring-on:5px;--hstl-glow:0 0 8px rgba(24,24,24,.2);--hstl-glow-on:0 0 8px rgba(24,24,24,.2)}
+.hstl--pin-ds .hstl__pin{left:-20px;top:-20px;width:40px;height:40px;background:none;box-shadow:none;opacity:.8;transition:opacity .15s}
+.hstl--pin-ds .hstl__pin:hover{transform:none}
+.hstl--pin-ds .hstl__pin::after{width:var(--hstl-dot);height:var(--hstl-dot);background:#fff;box-shadow:inset 0 0 0 var(--hstl-ring) #f3f3f3,var(--hstl-glow);transition:width .15s,height .15s,box-shadow .15s}
+.hstl--pin-ds .hstl__pin::before{display:none}
+.hstl--pin-ds .hstl__pw:hover .hstl__pin,.hstl--pin-ds .hstl__pw:focus-within .hstl__pin{background:none;box-shadow:none;opacity:1;--hstl-dot:var(--hstl-dot-on);--hstl-ring:var(--hstl-ring-on);--hstl-glow:var(--hstl-glow-on)}
+.hstl--pin-ds .hstl__pop{left:24px}
+.hstl--pin-ds .hstl__pw--l .hstl__pop{left:auto;right:24px}
+
+/* Shop the Look Card (desktop 320px: image 68×91 · name · price · wishlist + quick add) */
+.hstl--card-ds .hstl__pop{width:320px;padding:8px 12px;border:0;border-radius:0;background:#fff;-webkit-backdrop-filter:none;backdrop-filter:none;flex-direction:row;align-items:stretch;gap:12px}
+.hstl__dsc{display:flex;gap:12px;align-items:center;flex:1 1 0;min-width:0;color:var(--hstl-text);text-decoration:none}
+.hstl__dsc-img{flex:0 0 68px;height:91px;background:var(--hstl-card-bg);overflow:hidden}
+.hstl__dsc-img img{width:100%;height:100%;object-fit:cover;display:block}
+.hstl__dsc-txt{display:flex;flex-direction:column;justify-content:center;gap:4px;flex:1 1 0;min-width:0;align-self:stretch}
+.hstl__dsc-name{font-weight:500;font-size:16px;line-height:28px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hstl__dsc-price{display:flex;gap:4px;align-items:center;white-space:nowrap}
+.hstl__dsc-price b{font-weight:500;font-size:14px;line-height:24px}
+.hstl__dsc-price s{font-size:14px;line-height:20px;color:var(--hstl-secondary)}
+.hstl__dsc-acts{display:flex;flex-direction:column;justify-content:space-between;align-items:flex-end;flex:0 0 auto}
+.hstl__dsc-btn{border:0;padding:0;margin:0;cursor:pointer;display:grid;place-items:center}
+.hstl__dsc-btn--wish{height:32px;padding:0 8px;background:rgba(255,255,255,.4)}
+.hstl__dsc-btn--cart{width:32px;height:32px;background:#444}
+.hstl__dsc-btn:hover{opacity:.85}
+.hstl__dsc-btn:focus-visible{outline:2px solid #181818;outline-offset:2px}
+.hstl__dsc-btn--wish svg{width:16px;height:15px}
+.hstl--no-actions .hstl__dsc-acts{display:none!important}
+
+@media (max-width:767px){
+  .hstl--pin-ds{--hstl-dot:12px;--hstl-dot-on:16px;--hstl-ring:0px;--hstl-ring-on:0px;--hstl-glow:0 0 12px rgba(24,24,24,.32)}
+  .hstl--pin-ds .hstl__pin{left:-22px;top:-22px;width:44px;height:44px}
+  /* mobile card: 220px, centred on the pin but kept 12px inside the image */
+  .hstl--card-ds .hstl__pop,.hstl--card-ds .hstl__pw--l .hstl__pop{width:220px;max-width:calc(100cqw - 24px);padding:8px 0 8px 8px;right:auto;
+    left:calc(clamp(12px, var(--x,50) * 1cqw - 110px, 100cqw - 232px) - var(--x,50) * 1cqw);flex-direction:column;gap:16px}
+  .hstl__dsc{gap:8px;align-items:flex-start;padding-right:8px}
+  .hstl__dsc-img{flex-basis:60px;height:80px}
+  .hstl__dsc-txt{justify-content:flex-start}
+  .hstl__dsc-name{font-size:12px;line-height:18px}
+  .hstl__dsc-price{flex-wrap:wrap;gap:0 8px}
+  .hstl__dsc-price b,.hstl__dsc-price s{font-size:12px;line-height:18px}
+  /* buttons in the bottom row next to the image (44px touch targets): quick add left, wishlist right */
+  .hstl__dsc-acts{position:absolute;left:68px;right:0;bottom:2px;flex-direction:row-reverse;justify-content:space-between;align-items:center}
+  .hstl__dsc-btn--cart,.hstl__dsc-btn--wish{width:44px;height:44px;padding:6px;background-clip:content-box}
+  .hstl__dsc-btn--wish{padding:6px 0;width:32px}
+}
 #hstl-demo-classic{--hstl-block:#dfdbd2}
 #hstl-demo-classic .hstl__pw--0{left:53%;top:59%;--x:53}
 #hstl-demo-classic .hstl__pw--1{left:100%;top:0%;--x:100}
@@ -416,6 +464,54 @@
   .hstl--mood .hstl__stage .hstl__cta{display:none}
   .hstl--mood .hstl__cta--below{display:block;margin:8px 0 0}
 }
+
+/* ================= Design-system variants (opção por módulo) =================
+   Pontos: Figma "Shop the Look Chips" (9514:22669) · Cartão na imagem: Figma "Shop the Look Cards" (9532:5313) */
+.hstl--pin-ds{--hstl-dot:24px;--hstl-dot-on:24px;--hstl-ring:2px;--hstl-ring-on:5px;--hstl-glow:0 0 8px rgba(24,24,24,.2);--hstl-glow-on:0 0 8px rgba(24,24,24,.2)}
+.hstl--pin-ds .hstl__pin{left:-20px;top:-20px;width:40px;height:40px;background:none;box-shadow:none;opacity:.8;transition:opacity .15s}
+.hstl--pin-ds .hstl__pin:hover{transform:none}
+.hstl--pin-ds .hstl__pin::after{width:var(--hstl-dot);height:var(--hstl-dot);background:#fff;box-shadow:inset 0 0 0 var(--hstl-ring) #f3f3f3,var(--hstl-glow);transition:width .15s,height .15s,box-shadow .15s}
+.hstl--pin-ds .hstl__pin::before{display:none}
+.hstl--pin-ds .hstl__pw:hover .hstl__pin,.hstl--pin-ds .hstl__pw:focus-within .hstl__pin{background:none;box-shadow:none;opacity:1;--hstl-dot:var(--hstl-dot-on);--hstl-ring:var(--hstl-ring-on);--hstl-glow:var(--hstl-glow-on)}
+.hstl--pin-ds .hstl__pop{left:24px}
+.hstl--pin-ds .hstl__pw--l .hstl__pop{left:auto;right:24px}
+
+/* Shop the Look Card (desktop 320px: image 68×91 · name · price · wishlist + quick add) */
+.hstl--card-ds .hstl__pop{width:320px;padding:8px 12px;border:0;border-radius:0;background:#fff;-webkit-backdrop-filter:none;backdrop-filter:none;flex-direction:row;align-items:stretch;gap:12px}
+.hstl__dsc{display:flex;gap:12px;align-items:center;flex:1 1 0;min-width:0;color:var(--hstl-text);text-decoration:none}
+.hstl__dsc-img{flex:0 0 68px;height:91px;background:var(--hstl-card-bg);overflow:hidden}
+.hstl__dsc-img img{width:100%;height:100%;object-fit:cover;display:block}
+.hstl__dsc-txt{display:flex;flex-direction:column;justify-content:center;gap:4px;flex:1 1 0;min-width:0;align-self:stretch}
+.hstl__dsc-name{font-weight:500;font-size:16px;line-height:28px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hstl__dsc-price{display:flex;gap:4px;align-items:center;white-space:nowrap}
+.hstl__dsc-price b{font-weight:500;font-size:14px;line-height:24px}
+.hstl__dsc-price s{font-size:14px;line-height:20px;color:var(--hstl-secondary)}
+.hstl__dsc-acts{display:flex;flex-direction:column;justify-content:space-between;align-items:flex-end;flex:0 0 auto}
+.hstl__dsc-btn{border:0;padding:0;margin:0;cursor:pointer;display:grid;place-items:center}
+.hstl__dsc-btn--wish{height:32px;padding:0 8px;background:rgba(255,255,255,.4)}
+.hstl__dsc-btn--cart{width:32px;height:32px;background:#444}
+.hstl__dsc-btn:hover{opacity:.85}
+.hstl__dsc-btn:focus-visible{outline:2px solid #181818;outline-offset:2px}
+.hstl__dsc-btn--wish svg{width:16px;height:15px}
+.hstl--no-actions .hstl__dsc-acts{display:none!important}
+
+@media (max-width:767px){
+  .hstl--pin-ds{--hstl-dot:12px;--hstl-dot-on:16px;--hstl-ring:0px;--hstl-ring-on:0px;--hstl-glow:0 0 12px rgba(24,24,24,.32)}
+  .hstl--pin-ds .hstl__pin{left:-22px;top:-22px;width:44px;height:44px}
+  /* mobile card: 220px, centred on the pin but kept 12px inside the image */
+  .hstl--card-ds .hstl__pop,.hstl--card-ds .hstl__pw--l .hstl__pop{width:220px;max-width:calc(100cqw - 24px);padding:8px 0 8px 8px;right:auto;
+    left:calc(clamp(12px, var(--x,50) * 1cqw - 110px, 100cqw - 232px) - var(--x,50) * 1cqw);flex-direction:column;gap:16px}
+  .hstl__dsc{gap:8px;align-items:flex-start;padding-right:8px}
+  .hstl__dsc-img{flex-basis:60px;height:80px}
+  .hstl__dsc-txt{justify-content:flex-start}
+  .hstl__dsc-name{font-size:12px;line-height:18px}
+  .hstl__dsc-price{flex-wrap:wrap;gap:0 8px}
+  .hstl__dsc-price b,.hstl__dsc-price s{font-size:12px;line-height:18px}
+  /* buttons in the bottom row next to the image (44px touch targets): quick add left, wishlist right */
+  .hstl__dsc-acts{position:absolute;left:68px;right:0;bottom:2px;flex-direction:row-reverse;justify-content:space-between;align-items:center}
+  .hstl__dsc-btn--cart,.hstl__dsc-btn--wish{width:44px;height:44px;padding:6px;background-clip:content-box}
+  .hstl__dsc-btn--wish{padding:6px 0;width:32px}
+}
 #hstl-demo-moodboard .hstl__pw--0{left:53%;top:59%;--x:53}
 #hstl-demo-moodboard .hstl__pw--1{left:100%;top:0%;--x:100}
 #hstl-demo-moodboard:has(.hstl__c--0:hover) .hstl__pw--0 .hstl__pin,#hstl-demo-moodboard:has(.hstl__c--1:hover) .hstl__pw--1 .hstl__pin,#hstl-demo-moodboard:not(:has(.hstl__pw:hover,.hstl__pw:focus-within,.hstl__c:hover)) .hstl__pw--0 .hstl__pin{background:var(--hstl-pin);box-shadow:0 0 0 2px #fff,0 2px 10px rgba(0,0,0,.3)}
@@ -424,6 +520,264 @@
 #hstl-demo-moodboard:has(.hstl__c--0:hover) .hstl__pw--0 .hstl__pop,#hstl-demo-moodboard:has(.hstl__c--1:hover) .hstl__pw--1 .hstl__pop,#hstl-demo-moodboard:not(:has(.hstl__pw:hover,.hstl__pw:focus-within,.hstl__c:hover)) .hstl__pw--0 .hstl__pop{opacity:1;transform:var(--hstl-pop-t,translateY(-50%));pointer-events:auto;visibility:visible}
 #hstl-demo-moodboard:has(.hstl__c--0:hover) .hstl__pw--0,#hstl-demo-moodboard:has(.hstl__c--1:hover) .hstl__pw--1,#hstl-demo-moodboard:not(:has(.hstl__pw:hover,.hstl__pw:focus-within,.hstl__c:hover)) .hstl__pw--0{z-index:4}
 #hstl-demo-moodboard:has(.hstl__pw--0:hover,.hstl__pw--0:focus-within,.hstl__c--0:hover) .hstl__c--0 .hstl__card-img::after,#hstl-demo-moodboard:has(.hstl__pw--1:hover,.hstl__pw--1:focus-within,.hstl__c--1:hover) .hstl__c--1 .hstl__card-img::after,#hstl-demo-moodboard:has(.hstl__pw--0:hover,.hstl__pw--0:focus-within,.hstl__c--0:hover) .hstl__c--0 .hstl__mcard-img::after,#hstl-demo-moodboard:has(.hstl__pw--1:hover,.hstl__pw--1:focus-within,.hstl__c--1:hover) .hstl__c--1 .hstl__mcard-img::after,#hstl-demo-moodboard:not(:has(.hstl__pw:hover,.hstl__pw:focus-within,.hstl__c:hover)) .hstl__c--0 .hstl__card-img::after,#hstl-demo-moodboard:not(:has(.hstl__pw:hover,.hstl__pw:focus-within,.hstl__c:hover)) .hstl__c--0 .hstl__mcard-img::after{transform:scaleX(1)}</style><header class="hstl__mhead"><div class="hstl__mtitles"><p class="hstl__eyebrow">Shop the look</p><h2 class="hstl__title">Coleção de Natal</h2></div><div class="hstl__mactions"><button type="button" class="hstl__btn hstl__btn--sec" data-hstl-action="wishlist" data-scope="all">Adicionar aos favoritos</button><button type="button" class="hstl__btn hstl__btn--pri" data-hstl-action="cart" data-scope="all">Adicionar tudo ao carrinho</button></div></header><div class="hstl__mbody"><div class="hstl__stage hstl__mstage"><img src="https://www.homastores.com/dw/image/v2/BFDH_PRD/on/demandware.static/-/Sites-Homa_PT-Library/default/dwd87779c6/home/shoplook/hp-shop-trend-image_solidcolor.webp?sw=1920&amp;q=80" alt="Sala decorada" loading="lazy" decoding="async"><span class="hstl__pw hstl__pw--0"><span class="hstl__pin" tabindex="0" role="button" aria-label="Almofada SAVOY 35x50cm" data-ff-pin="473088"></span><a class="hstl__pop" href="https://www.homastores.com/pt/pt/p-473088.html" data-item-id="473088" data-item-name="Almofada SAVOY 35x50cm" data-item-price="15.00" data-item-index="1" data-item-cat="Decoração &gt; Almofadas"><span class="hstl__pop-name">Almofada SAVOY 35x50cm</span><span class="hstl__pop-price"><span class="hstl__price"><b>15,00 €</b><s>20,00 €</s><em>-25%</em></span></span><span class="hstl__pop-cta">Ver produto</span></a></span><span class="hstl__pw hstl__pw--1 hstl__pw--l hstl__pw--t hstl__pw--mb"><span class="hstl__pin" tabindex="0" role="button" aria-label="Quadro decorativo mulher MONA 58x78cm" data-ff-pin="474166"></span><a class="hstl__pop" href="https://www.homastores.com/pt/pt/p-474166.html" data-item-id="474166" data-item-name="Quadro decorativo mulher MONA 58x78cm" data-item-price="30.00" data-item-index="2" data-item-cat="Decoração &gt; Quadros"><span class="hstl__pop-name">Quadro decorativo mulher MONA 58x78cm</span><span class="hstl__pop-price"><span class="hstl__price"><b>30,00 €</b></span></span><span class="hstl__pop-cta">Ver produto</span></a></span></div><div class="hstl__mgrid" role="list"><div class="hstl__mcard hstl__c hstl__c--0" role="listitem"><div class="hstl__mcard-img"><a href="https://www.homastores.com/pt/pt/p-473088.html" tabindex="-1" aria-hidden="true" data-item-id="473088" data-item-name="Almofada SAVOY 35x50cm" data-item-price="15.00" data-item-index="1" data-item-cat="Decoração &gt; Almofadas"><img src="https://img/473088.jpg" alt="" loading="lazy" decoding="async"></a><span class="hstl__badges"><span class="hstl__badge hstl__badge--brand">Exclusivo online</span><span class="hstl__badge">x</span></span><button type="button" class="hstl__icon hstl__icon--wish" data-hstl-action="wishlist" data-item-id="473088" aria-label="Adicionar aos favoritos: Almofada SAVOY 35x50cm"><svg class="hstl__ico-heart" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M8 13.6S1.8 10 1.8 5.7A3.2 3.2 0 0 1 8 4.4a3.2 3.2 0 0 1 6.2 1.3C14.2 10 8 13.6 8 13.6Z" fill="none" stroke="#181818" stroke-width="1.2" stroke-linejoin="round"/></svg></button><button type="button" class="hstl__icon hstl__icon--cart" data-hstl-action="cart" data-item-id="473088" aria-label="Adicionar ao carrinho: Almofada SAVOY 35x50cm"><svg class="hstl__ico-bag" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" fill="none" stroke="#181818" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 8h15l-1 12.5h-13z"/><path d="M8.5 8V6.5a3.5 3.5 0 0 1 7 0V8"/><path d="M12 11.5v5M9.5 14h5"/></svg></button></div><a class="hstl__mcard-txt" href="https://www.homastores.com/pt/pt/p-473088.html" data-item-id="473088" data-item-name="Almofada SAVOY 35x50cm" data-item-price="15.00" data-item-index="1" data-item-cat="Decoração &gt; Almofadas"><span class="hstl__card-name">Almofada SAVOY 35x50cm</span><span class="hstl__card-desc">Desc</span><span class="hstl__price"><b>15,00 €</b><s>20,00 €</s><em>-25%</em></span></a></div><div class="hstl__mcard hstl__c hstl__c--1" role="listitem"><div class="hstl__mcard-img"><a href="https://www.homastores.com/pt/pt/p-474166.html" tabindex="-1" aria-hidden="true" data-item-id="474166" data-item-name="Quadro decorativo mulher MONA 58x78cm" data-item-price="30.00" data-item-index="2" data-item-cat="Decoração &gt; Quadros"><img src="https://img/474166.jpg" alt="" loading="lazy" decoding="async"></a><button type="button" class="hstl__icon hstl__icon--wish" data-hstl-action="wishlist" data-item-id="474166" aria-label="Adicionar aos favoritos: Quadro decorativo mulher MONA 58x78cm"><svg class="hstl__ico-heart" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M8 13.6S1.8 10 1.8 5.7A3.2 3.2 0 0 1 8 4.4a3.2 3.2 0 0 1 6.2 1.3C14.2 10 8 13.6 8 13.6Z" fill="none" stroke="#181818" stroke-width="1.2" stroke-linejoin="round"/></svg></button><button type="button" class="hstl__icon hstl__icon--cart" data-hstl-action="cart" data-item-id="474166" aria-label="Adicionar ao carrinho: Quadro decorativo mulher MONA 58x78cm"><svg class="hstl__ico-bag" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" fill="none" stroke="#181818" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 8h15l-1 12.5h-13z"/><path d="M8.5 8V6.5a3.5 3.5 0 0 1 7 0V8"/><path d="M12 11.5v5M9.5 14h5"/></svg></button></div><a class="hstl__mcard-txt" href="https://www.homastores.com/pt/pt/p-474166.html" data-item-id="474166" data-item-name="Quadro decorativo mulher MONA 58x78cm" data-item-price="30.00" data-item-index="2" data-item-cat="Decoração &gt; Quadros"><span class="hstl__card-name">Quadro decorativo mulher MONA 58x78cm</span><span class="hstl__card-desc">Desc</span><span class="hstl__price"><b>30,00 €</b></span></a></div></div></div></div>
+
+<div style="height:80px"></div>
+<!-- hôma · Shop the Look · Demo design system (pontos + cartões) ·· HTML + CSS, sem JavaScript; tracking pela tag FeedForge no GTM -->
+<div class="hstl hstl--classic hstl--pin-ds hstl--card-ds hstl--no-actions" id="hstl-demo-ds" data-stl-id="demo-ds" data-ff-list-id="stl_demo-ds" data-ff-list-name="Shop the Look - Demo design system" aria-label="Shop the Look"><style>/* hôma · Shop the Look (storefront + FeedForge preview). Gilroy comes from the storefront.
+   No JavaScript: the markup comes from public/stl/render.mjs; interactions are :hover / :focus-within here and :has() rules
+   generated per module (active product, popover by card hover, Color Block highlight). */
+/* ================= hôma Shop the Look widget ================= */
+/* Visual editor: every value below can be overridden per module with --hstl-s-<key> on the <section> (see style-schema.mjs);
+   the fallbacks are the Figma values. */
+.hstl{
+  --hstl-text:var(--hstl-s-text,#181818); --hstl-headline:var(--hstl-s-headline,#000); --hstl-secondary:#444;
+  --hstl-block:#dfdbd2;          /* Color Block (configurável) */
+  --hstl-list-bg:var(--hstl-s-list-bg,#f3f1ea);        /* beige/beige-70 */
+  --hstl-card-bg:var(--hstl-s-card-bg,#f8f6f4);
+  --hstl-brand:#daaa00; --hstl-success:#194e31; --hstl-danger:var(--hstl-s-danger,#8e030f); --hstl-border:#e5e5e5;
+  --hstl-arrow:#aeaeae; --hstl-pin:var(--hstl-s-pin,var(--hstl-text));
+  --hstl-gutter:var(--hstl-s-gutter-d,40px);
+  font-family:Gilroy,"Helvetica Neue",Arial,sans-serif; color:var(--hstl-text); background:var(--hstl-s-bg);
+  display:flex; flex-direction:column; gap:var(--hstl-s-head-gap-d,32px); width:100%; box-sizing:border-box;
+  padding:var(--hstl-s-pad-top-d,0px) 0 var(--hstl-s-pad-bottom-d,0px);
+}
+.hstl *,.hstl *::before,.hstl *::after{box-sizing:border-box}
+.hstl__head{padding:0 var(--hstl-gutter);max-width:1520px}
+.hstl__eyebrow{margin:0;font-weight:500;font-size:var(--hstl-s-eyebrow-d,18px);line-height:var(--hstl-s-eyebrow-d-lh,28px);text-transform:uppercase;color:var(--hstl-s-eyebrow,inherit)}
+.hstl__title{margin:0;font-weight:500;font-size:var(--hstl-s-title-d,34px);line-height:var(--hstl-s-title-d-lh,52px);letter-spacing:-.02em;color:var(--hstl-headline)}
+
+.hstl__products{display:flex;flex-direction:column}
+.hstl__inspo{display:flex;width:100%}
+.hstl__stage{position:relative;flex:1 1 auto;aspect-ratio:var(--hstl-s-stage-d,1475/1080);overflow:hidden;background:#e9e5dd;container-type:inline-size}
+.hstl__stage>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+
+/* Pins: .hstl__pw is the positioned point (left/top per module), the pin and its popover live inside */
+.hstl__pw{position:absolute;z-index:2;width:0;height:0}
+.hstl__pw:hover,.hstl__pw:focus-within{z-index:5}
+.hstl__pin{position:absolute;left:-14px;top:-14px;width:28px;height:28px;border-radius:50%;
+  border:0;padding:0;cursor:pointer;background:rgba(255,255,255,.92);box-shadow:0 2px 8px rgba(0,0,0,.25);outline:0;
+  display:grid;place-items:center;transition:transform .15s ease,background .15s ease}
+.hstl__pin::after{content:"";width:8px;height:8px;border-radius:50%;background:var(--hstl-pin);transition:background .15s}
+.hstl__pin:hover{transform:scale(1.12)}
+.hstl__pin:focus-visible{outline:2px solid #fff;outline-offset:3px}
+.hstl__pw:hover .hstl__pin,.hstl__pw:focus-within .hstl__pin{background:var(--hstl-pin);box-shadow:0 0 0 2px #fff,0 2px 10px rgba(0,0,0,.3)}
+.hstl__pw:hover .hstl__pin::after,.hstl__pw:focus-within .hstl__pin::after{background:#fff}
+/* pulse ring: only on the active pin (hover / focus here, default + card hover in the module rules) */
+.hstl__pin::before{content:"";position:absolute;inset:-9px;border-radius:50%;border:1.5px solid rgba(255,255,255,.65);opacity:0}
+.hstl__pw:hover .hstl__pin::before,.hstl__pw:focus-within .hstl__pin::before{animation:hstl-pulse 1.8s ease-out infinite}
+@keyframes hstl-pulse{from{transform:scale(.7);opacity:1}to{transform:scale(1.25);opacity:0}}
+@media (prefers-reduced-motion:reduce){.hstl__pin::before{animation:none!important;opacity:1}}
+
+/* Popover (glass card from Figma "Product card"): beside the pin, flipped near the edges by the renderer */
+.hstl__pop{--hstl-pop-t:translateY(-50%);position:absolute;left:28px;top:0;z-index:3;width:248px;padding:20px;border-radius:4px;border:1px solid #fff;
+  background:rgba(255,255,255,.6);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);
+  display:flex;flex-direction:column;gap:4px;font-size:16px;line-height:28px;color:var(--hstl-text);
+  text-decoration:none;opacity:0;visibility:hidden;transform:var(--hstl-pop-t) translateY(4px);transition:opacity .18s,transform .18s,visibility .18s;pointer-events:none}
+.hstl__pop::before{content:"";position:absolute;top:0;bottom:0;left:-30px;width:30px} /* hover bridge pin → popover */
+.hstl__pw--l .hstl__pop{left:auto;right:28px}
+.hstl__pw--l .hstl__pop::before{left:auto;right:-30px}
+.hstl__pw--t .hstl__pop{--hstl-pop-t:none;top:-20px}
+.hstl__pw--b .hstl__pop{--hstl-pop-t:none;top:auto;bottom:-20px}
+.hstl__pw:hover .hstl__pop,.hstl__pw:focus-within .hstl__pop{opacity:1;visibility:visible;transform:var(--hstl-pop-t);pointer-events:auto}
+.hstl__pop-name{font-weight:400;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.hstl__pop-price{font-weight:500;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.hstl__pop-cta{font-weight:500;text-decoration:underline;line-height:24px}
+
+/* CTA on image */
+.hstl__cta--below{display:none;position:static!important;transform:none!important;color:var(--hstl-text)!important;text-shadow:none!important;margin:24px 16px 0;text-align:center}
+.hstl__cta{position:absolute;z-index:1;transform:translate(-50%,-50%);color:#fff;font-weight:500;font-size:16px;line-height:24px;
+  text-decoration:underline;text-underline-offset:3px;white-space:nowrap;text-shadow:0 1px 6px rgba(0,0,0,.35)}
+
+/* Color Block + highlight card */
+.hstl__block{flex:0 0 auto;width:var(--hstl-s-block-w,23.18%);min-width:300px;background:var(--hstl-block);display:grid;align-items:center;justify-items:center;padding:40px clamp(24px,4.2vw,80px)}
+/* every product has its highlight card stacked in the same cell; the active one is shown (module :has() rules) */
+.hstl__hl{grid-area:1/1;width:100%;max-width:285px;display:flex;flex-direction:column;gap:8px;color:inherit;text-decoration:none;opacity:0;visibility:hidden;transition:opacity .2s,visibility .2s}
+@supports not selector(:has(*)){.hstl__hl.is-default{opacity:1;visibility:visible}}
+.hstl__hl-img{aspect-ratio:var(--hstl-s-card-ratio,285/380);background:var(--hstl-card-bg);position:relative;overflow:hidden}
+.hstl__hl-img img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;transition:opacity .2s}
+.hstl__hl-name{font-weight:600;font-size:16px;line-height:28px}
+.hstl__hl-desc{display:block;font-size:14px;line-height:24px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* Prices + badges */
+.hstl__price{display:flex;gap:8px;align-items:center;white-space:nowrap}
+.hstl__price b{font-weight:600;font-size:16px;line-height:28px}
+.hstl__price s{font-size:14px;line-height:24px;color:var(--hstl-secondary)}
+.hstl__price em,.hstl__price s{font-style:normal}
+.hstl__price em{font-size:14px;line-height:24px;color:var(--hstl-danger)}
+.hstl__badges{position:absolute;left:8px;bottom:8px;display:flex;flex-direction:column;gap:4px;align-items:flex-start}
+.hstl__badge{font-size:12px;line-height:18px;padding:2px 8px;border-radius:4px;background:#fff;border:1px solid var(--hstl-border);color:var(--hstl-text)}
+.hstl__badge--brand{background:var(--hstl-brand);border-color:var(--hstl-brand);color:#101010}
+.hstl__badge--success{background:var(--hstl-success);border-color:var(--hstl-success);color:#fff}
+
+/* Products list / carousel */
+.hstl__list{position:relative;background:var(--hstl-list-bg);padding:var(--hstl-s-list-pad-d,118px) var(--hstl-gutter)}
+.hstl__track{display:flex;gap:var(--hstl-s-row-gap-d,12px);overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;padding-bottom:12px;scrollbar-width:thin;scrollbar-color:#aeaeae transparent}
+.hstl__track::-webkit-scrollbar{height:4px}.hstl__track::-webkit-scrollbar-thumb{background:#aeaeae;border-radius:4px}
+.hstl__card{flex:0 0 var(--hstl-s-card-w-d,285px);min-width:0;scroll-snap-align:start;display:flex;flex-direction:column;gap:8px;color:inherit;text-decoration:none;cursor:pointer}
+.hstl__card-img{position:relative;aspect-ratio:var(--hstl-s-card-ratio,285/380);background:var(--hstl-card-bg);overflow:hidden}
+.hstl__card-img img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:transform .4s}
+.hstl__card:hover .hstl__card-img img{transform:scale(1.03)}
+.hstl__card-img::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--hstl-text);transform:scaleX(0);transform-origin:left;transition:transform .25s}
+.hstl__card:hover .hstl__card-img::after{transform:scaleX(1)}
+.hstl__card-name{font-weight:500;font-size:var(--hstl-s-name-d,16px);line-height:var(--hstl-s-name-d-lh,28px);display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+.hstl__card-desc{display:block;font-size:12px;line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hstl__card .hstl__price b{font-weight:500}
+
+/* Mobile (Figma 375) */
+@media (max-width:767px){
+  .hstl{--hstl-gutter:var(--hstl-s-gutter-m,16px);gap:var(--hstl-s-head-gap-m,32px);padding:var(--hstl-s-pad-top-m,0px) 0 var(--hstl-s-pad-bottom-m,0px)}
+  .hstl__eyebrow{font-size:var(--hstl-s-eyebrow-m,14px);line-height:var(--hstl-s-eyebrow-m-lh,24px)}
+  .hstl__title{font-size:var(--hstl-s-title-m,22px);line-height:var(--hstl-s-title-m-lh,32px);letter-spacing:-.01em}
+  .hstl__inspo{flex-direction:column}
+  .hstl__stage{aspect-ratio:var(--hstl-s-stage-m,375/396)}
+  .hstl__block{display:none}
+  /* mobile popover: full width of the image (container units), below the pin in the top half, above it in the bottom half */
+  .hstl__pop,.hstl__pw--l .hstl__pop{--hstl-pop-t:none;left:calc(12px - var(--x,50) * 1cqw);right:auto;width:calc(100cqw - 24px);padding:12px 14px;font-size:14px;line-height:22px;top:auto;bottom:24px}
+  .hstl__pw--mb .hstl__pop{top:24px;bottom:auto}
+  .hstl__pop::before{display:none}
+  .hstl__pop .hstl__price b{font-size:14px;line-height:22px}
+  .hstl__stage .hstl__cta{display:none}
+  .hstl__cta--below{display:block}
+  .hstl__list{padding:var(--hstl-s-list-pad-m,80px) 0 var(--hstl-s-list-pad-m,80px) 20px}
+  .hstl__track{gap:var(--hstl-s-row-gap-m,12px)}
+  .hstl__card{flex-basis:var(--hstl-s-card-w-m,160px)}
+  .hstl__card-name{font-size:var(--hstl-s-name-m,16px);line-height:var(--hstl-s-name-m-lh,28px)}
+  .hstl__card-desc{font-size:14px;line-height:24px}
+}
+
+/* ================= Moodboard layout (Figma "Shop the Look" 9060:8542) ================= */
+.hstl--mood{gap:var(--hstl-s-head-gap-d,40px);padding:var(--hstl-s-pad-top-d,80px) 0 var(--hstl-s-pad-bottom-d,80px);background:var(--hstl-s-bg,#fff);--hstl-gutter:var(--hstl-s-gutter-d,40px);--hstl-headline:var(--hstl-s-headline,#101010)}
+.hstl--mood .hstl__mhead{display:flex;align-items:flex-end;gap:40px;padding:0 var(--hstl-gutter)}
+.hstl--mood .hstl__mtitles{flex:1 1 0;min-width:0;display:flex;flex-direction:column}
+.hstl--mood .hstl__eyebrow{font-weight:700;font-size:var(--hstl-s-eyebrow-d,14px);line-height:var(--hstl-s-eyebrow-d-lh,24px);letter-spacing:.98px;text-transform:uppercase;color:var(--hstl-s-eyebrow,#757575)}
+.hstl--mood .hstl__title{font-weight:500;font-size:var(--hstl-s-title-d,46px);line-height:var(--hstl-s-title-d-lh,68px);letter-spacing:0;color:var(--hstl-headline)}
+.hstl__mactions{display:flex;gap:40px;align-items:flex-end;flex:0 0 auto}
+.hstl__btn{min-width:182px;padding:12px 42px;border:1px solid #181818;font:500 16px/24px Gilroy,"Helvetica Neue",Arial,sans-serif;cursor:pointer;white-space:nowrap;transition:opacity .15s,background .15s}
+.hstl__btn--sec{background:#fff;color:#181818}
+.hstl__btn--pri{background:var(--hstl-s-btn-bg,#181818);border-color:var(--hstl-s-btn-bg,#181818);color:var(--hstl-s-btn-fg,#fff)}
+.hstl__btn:hover{opacity:.85}
+.hstl__btn:disabled{opacity:.5;cursor:default}
+/* cart / wishlist buttons need the storefront (no JS in Raw HTML): hidden on the site until it removes .hstl--no-actions */
+.hstl--no-actions [data-hstl-action],.hstl--no-actions .hstl__mactions{display:none!important}
+
+/* desktop ≥ 1024: image | 2×2 products */
+.hstl__mbody{display:grid;grid-template-columns:minmax(0,var(--hstl-s-img-fr,1fr)) minmax(0,var(--hstl-s-grid-fr,1fr));gap:var(--hstl-s-body-gap-d,40px);padding:0 var(--hstl-gutter);align-items:start}
+.hstl--mood .hstl__mstage{aspect-ratio:auto;align-self:stretch;min-height:100%;background:#e9e5dd}
+/* desktop: the image follows the height of the product grid, but never less than 3:4 (otherwise it collapses with 0–2 products) */
+@media (min-width:1025px){.hstl--mood .hstl__mstage::before{content:"";display:block;padding-top:133.333%}}
+.hstl__mgrid{display:grid;grid-template-columns:repeat(var(--hstl-s-grid-cols,2),minmax(0,1fr));column-gap:var(--hstl-s-grid-gap-x,48px);row-gap:var(--hstl-s-grid-gap-y,32px);align-items:start}
+
+/* product card (Card/Product/Default: wishlist + quick add on the image) */
+.hstl__mcard{position:relative;display:flex;flex-direction:column;gap:8px;min-width:0}
+.hstl__mcard-img{position:relative;aspect-ratio:var(--hstl-s-card-ratio,285/380);background:var(--hstl-card-bg);overflow:hidden}
+.hstl__mcard-img>a{position:absolute;inset:0;display:block}
+.hstl__mcard-img img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .4s}
+.hstl__mcard:hover .hstl__mcard-img img{transform:scale(1.03)}
+.hstl__mcard-img::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--hstl-text);transform:scaleX(0);transform-origin:left;transition:transform .25s;pointer-events:none}
+.hstl__mcard:hover .hstl__mcard-img::after{transform:scaleX(1)}
+.hstl__mcard .hstl__badges{left:8px;bottom:8px}
+.hstl__icon{position:absolute;right:8px;width:42px;height:42px;padding:0;border:0;background:rgba(255,255,255,.4);display:grid;place-items:center;cursor:pointer;z-index:1;transition:background .15s}
+.hstl__icon:hover{background:rgba(255,255,255,.75)}
+.hstl__icon:focus-visible{outline:2px solid #181818;outline-offset:2px}
+.hstl__icon--wish{top:8px}
+.hstl__icon--cart{bottom:8px}
+.hstl__icon--wish[aria-pressed="true"] path{fill:#181818}
+.hstl__mcard-txt{display:flex;flex-direction:column;color:var(--hstl-text);text-decoration:none;min-width:0}
+.hstl__mcard-txt .hstl__card-name{font-weight:500;font-size:var(--hstl-s-name-d,16px);line-height:var(--hstl-s-name-d-lh,28px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.hstl__mcard-txt .hstl__card-desc{font-size:12px;line-height:24px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.hstl__mcard-txt .hstl__price{flex-wrap:wrap}
+.hstl__mcard-txt .hstl__price b{font-weight:500}
+.hstl--mood .hstl__cta--below{display:none}
+
+/* tablet 768–1024 (Figma "Device Width=1024-767"): image on top (3:4), 4 cards per row (more → horizontal scroll) */
+@media (max-width:1024px){
+  .hstl__mbody{grid-template-columns:minmax(0,1fr)}
+  .hstl--mood .hstl__mstage{aspect-ratio:var(--hstl-s-stage-t,285/380);min-height:0}
+  .hstl__mgrid{--hstl-n:var(--hstl-s-per-view-t,4);--hstl-g:var(--hstl-s-row-gap-d,16px);display:flex;gap:var(--hstl-g);overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none}
+  .hstl__mgrid::-webkit-scrollbar{display:none}
+  .hstl__mcard{flex:0 0 calc((100% - (var(--hstl-n) - 1) * var(--hstl-g)) / var(--hstl-n));scroll-snap-align:start}
+}
+
+/* mobile ≤ 767: smaller head without buttons, 2 cards per view */
+@media (max-width:767px){
+  .hstl--mood{gap:var(--hstl-s-head-gap-m,24px);padding:var(--hstl-s-pad-top-m,40px) 0 var(--hstl-s-pad-bottom-m,40px);--hstl-gutter:var(--hstl-s-gutter-m,20px)}
+  .hstl--mood .hstl__eyebrow{font-size:var(--hstl-s-eyebrow-m,12px);line-height:var(--hstl-s-eyebrow-m-lh,20px);letter-spacing:.84px}
+  .hstl--mood .hstl__title{font-size:var(--hstl-s-title-m,28px);line-height:var(--hstl-s-title-m-lh,42px)}
+  .hstl--mood .hstl__mtitles{gap:2px}
+  .hstl__mactions{display:none}
+  .hstl__mbody{gap:var(--hstl-s-body-gap-m,16px)}
+  .hstl__mgrid{--hstl-n:var(--hstl-s-per-view-m,2);--hstl-g:var(--hstl-s-row-gap-m,16px)}
+  .hstl__mcard{gap:4px}
+  .hstl__icon{width:44px;height:44px;right:0;background:none}
+  .hstl__icon::before{content:"";position:absolute;inset:6px;background:rgba(255,255,255,.4);z-index:-1}
+  .hstl__icon--wish{top:0}.hstl__icon--cart{bottom:0}
+  .hstl__icon .hstl__ico-bag{width:16px;height:16px}
+  .hstl__mcard-txt .hstl__card-name{font-size:var(--hstl-s-name-m,14px);line-height:var(--hstl-s-name-m-lh,20px)}
+  .hstl__mcard-txt .hstl__card-desc{font-size:12px;line-height:18px;color:var(--hstl-secondary)}
+  .hstl__mcard-txt .hstl__price b{font-size:14px;line-height:20px}
+  .hstl__mcard-txt .hstl__price s,.hstl__mcard-txt .hstl__price em{font-size:12px;line-height:18px}
+  .hstl__mcard-txt .hstl__price{gap:4px}
+  .hstl--mood .hstl__stage .hstl__cta{display:none}
+  .hstl--mood .hstl__cta--below{display:block;margin:8px 0 0}
+}
+
+/* ================= Design-system variants (opção por módulo) =================
+   Pontos: Figma "Shop the Look Chips" (9514:22669) · Cartão na imagem: Figma "Shop the Look Cards" (9532:5313) */
+.hstl--pin-ds{--hstl-dot:24px;--hstl-dot-on:24px;--hstl-ring:2px;--hstl-ring-on:5px;--hstl-glow:0 0 8px rgba(24,24,24,.2);--hstl-glow-on:0 0 8px rgba(24,24,24,.2)}
+.hstl--pin-ds .hstl__pin{left:-20px;top:-20px;width:40px;height:40px;background:none;box-shadow:none;opacity:.8;transition:opacity .15s}
+.hstl--pin-ds .hstl__pin:hover{transform:none}
+.hstl--pin-ds .hstl__pin::after{width:var(--hstl-dot);height:var(--hstl-dot);background:#fff;box-shadow:inset 0 0 0 var(--hstl-ring) #f3f3f3,var(--hstl-glow);transition:width .15s,height .15s,box-shadow .15s}
+.hstl--pin-ds .hstl__pin::before{display:none}
+.hstl--pin-ds .hstl__pw:hover .hstl__pin,.hstl--pin-ds .hstl__pw:focus-within .hstl__pin{background:none;box-shadow:none;opacity:1;--hstl-dot:var(--hstl-dot-on);--hstl-ring:var(--hstl-ring-on);--hstl-glow:var(--hstl-glow-on)}
+.hstl--pin-ds .hstl__pop{left:24px}
+.hstl--pin-ds .hstl__pw--l .hstl__pop{left:auto;right:24px}
+
+/* Shop the Look Card (desktop 320px: image 68×91 · name · price · wishlist + quick add) */
+.hstl--card-ds .hstl__pop{width:320px;padding:8px 12px;border:0;border-radius:0;background:#fff;-webkit-backdrop-filter:none;backdrop-filter:none;flex-direction:row;align-items:stretch;gap:12px}
+.hstl__dsc{display:flex;gap:12px;align-items:center;flex:1 1 0;min-width:0;color:var(--hstl-text);text-decoration:none}
+.hstl__dsc-img{flex:0 0 68px;height:91px;background:var(--hstl-card-bg);overflow:hidden}
+.hstl__dsc-img img{width:100%;height:100%;object-fit:cover;display:block}
+.hstl__dsc-txt{display:flex;flex-direction:column;justify-content:center;gap:4px;flex:1 1 0;min-width:0;align-self:stretch}
+.hstl__dsc-name{font-weight:500;font-size:16px;line-height:28px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hstl__dsc-price{display:flex;gap:4px;align-items:center;white-space:nowrap}
+.hstl__dsc-price b{font-weight:500;font-size:14px;line-height:24px}
+.hstl__dsc-price s{font-size:14px;line-height:20px;color:var(--hstl-secondary)}
+.hstl__dsc-acts{display:flex;flex-direction:column;justify-content:space-between;align-items:flex-end;flex:0 0 auto}
+.hstl__dsc-btn{border:0;padding:0;margin:0;cursor:pointer;display:grid;place-items:center}
+.hstl__dsc-btn--wish{height:32px;padding:0 8px;background:rgba(255,255,255,.4)}
+.hstl__dsc-btn--cart{width:32px;height:32px;background:#444}
+.hstl__dsc-btn:hover{opacity:.85}
+.hstl__dsc-btn:focus-visible{outline:2px solid #181818;outline-offset:2px}
+.hstl__dsc-btn--wish svg{width:16px;height:15px}
+.hstl--no-actions .hstl__dsc-acts{display:none!important}
+
+@media (max-width:767px){
+  .hstl--pin-ds{--hstl-dot:12px;--hstl-dot-on:16px;--hstl-ring:0px;--hstl-ring-on:0px;--hstl-glow:0 0 12px rgba(24,24,24,.32)}
+  .hstl--pin-ds .hstl__pin{left:-22px;top:-22px;width:44px;height:44px}
+  /* mobile card: 220px, centred on the pin but kept 12px inside the image */
+  .hstl--card-ds .hstl__pop,.hstl--card-ds .hstl__pw--l .hstl__pop{width:220px;max-width:calc(100cqw - 24px);padding:8px 0 8px 8px;right:auto;
+    left:calc(clamp(12px, var(--x,50) * 1cqw - 110px, 100cqw - 232px) - var(--x,50) * 1cqw);flex-direction:column;gap:16px}
+  .hstl__dsc{gap:8px;align-items:flex-start;padding-right:8px}
+  .hstl__dsc-img{flex-basis:60px;height:80px}
+  .hstl__dsc-txt{justify-content:flex-start}
+  .hstl__dsc-name{font-size:12px;line-height:18px}
+  .hstl__dsc-price{flex-wrap:wrap;gap:0 8px}
+  .hstl__dsc-price b,.hstl__dsc-price s{font-size:12px;line-height:18px}
+  /* buttons in the bottom row next to the image (44px touch targets): quick add left, wishlist right */
+  .hstl__dsc-acts{position:absolute;left:68px;right:0;bottom:2px;flex-direction:row-reverse;justify-content:space-between;align-items:center}
+  .hstl__dsc-btn--cart,.hstl__dsc-btn--wish{width:44px;height:44px;padding:6px;background-clip:content-box}
+  .hstl__dsc-btn--wish{padding:6px 0;width:32px}
+}
+#hstl-demo-ds{--hstl-block:#dfdbd2}
+#hstl-demo-ds .hstl__pw--0{left:53%;top:59%;--x:53}
+#hstl-demo-ds .hstl__pw--1{left:100%;top:0%;--x:100}
+#hstl-demo-ds:has(.hstl__c--0:hover) .hstl__pw--0 .hstl__pin,#hstl-demo-ds:has(.hstl__c--1:hover) .hstl__pw--1 .hstl__pin,#hstl-demo-ds:not(:has(.hstl__pw:hover,.hstl__pw:focus-within,.hstl__c:hover)) .hstl__pw--0 .hstl__pin{opacity:1;--hstl-dot:var(--hstl-dot-on);--hstl-ring:var(--hstl-ring-on);--hstl-glow:var(--hstl-glow-on)}
+#hstl-demo-ds:has(.hstl__c--0:hover) .hstl__pw--0 .hstl__pin::after,#hstl-demo-ds:has(.hstl__c--1:hover) .hstl__pw--1 .hstl__pin::after,#hstl-demo-ds:not(:has(.hstl__pw:hover,.hstl__pw:focus-within,.hstl__c:hover)) .hstl__pw--0 .hstl__pin::after{background:#fff}
+#hstl-demo-ds:has(.hstl__c--0:hover) .hstl__pw--0 .hstl__pin::before,#hstl-demo-ds:has(.hstl__c--1:hover) .hstl__pw--1 .hstl__pin::before,#hstl-demo-ds:not(:has(.hstl__pw:hover,.hstl__pw:focus-within,.hstl__c:hover)) .hstl__pw--0 .hstl__pin::before{animation:hstl-pulse 1.8s ease-out infinite}
+#hstl-demo-ds:has(.hstl__c--0:hover) .hstl__pw--0 .hstl__pop,#hstl-demo-ds:has(.hstl__c--1:hover) .hstl__pw--1 .hstl__pop,#hstl-demo-ds:not(:has(.hstl__pw:hover,.hstl__pw:focus-within,.hstl__c:hover)) .hstl__pw--0 .hstl__pop{opacity:1;transform:var(--hstl-pop-t,translateY(-50%));pointer-events:auto;visibility:visible}
+#hstl-demo-ds:has(.hstl__c--0:hover) .hstl__pw--0,#hstl-demo-ds:has(.hstl__c--1:hover) .hstl__pw--1,#hstl-demo-ds:not(:has(.hstl__pw:hover,.hstl__pw:focus-within,.hstl__c:hover)) .hstl__pw--0{z-index:4}
+#hstl-demo-ds:has(.hstl__pw--0:hover,.hstl__pw--0:focus-within,.hstl__c--0:hover) .hstl__c--0 .hstl__card-img::after,#hstl-demo-ds:has(.hstl__pw--1:hover,.hstl__pw--1:focus-within,.hstl__c--1:hover) .hstl__c--1 .hstl__card-img::after,#hstl-demo-ds:has(.hstl__pw--0:hover,.hstl__pw--0:focus-within,.hstl__c--0:hover) .hstl__c--0 .hstl__mcard-img::after,#hstl-demo-ds:has(.hstl__pw--1:hover,.hstl__pw--1:focus-within,.hstl__c--1:hover) .hstl__c--1 .hstl__mcard-img::after,#hstl-demo-ds:not(:has(.hstl__pw:hover,.hstl__pw:focus-within,.hstl__c:hover)) .hstl__c--0 .hstl__card-img::after,#hstl-demo-ds:not(:has(.hstl__pw:hover,.hstl__pw:focus-within,.hstl__c:hover)) .hstl__c--0 .hstl__mcard-img::after{transform:scaleX(1)}
+#hstl-demo-ds:has(.hstl__pw--0:hover,.hstl__pw--0:focus-within,.hstl__c--0:hover) .hstl__hl--0,#hstl-demo-ds:has(.hstl__pw--1:hover,.hstl__pw--1:focus-within,.hstl__c--1:hover) .hstl__hl--1,#hstl-demo-ds:not(:has(.hstl__pw:hover,.hstl__pw:focus-within,.hstl__c:hover)) .hstl__hl--0{opacity:1;visibility:visible}</style><header class="hstl__head"><p class="hstl__eyebrow">Shop the look</p><h2 class="hstl__title">Coleção de Natal</h2></header><div class="hstl__products"><div class="hstl__inspo"><div class="hstl__stage"><img src="https://www.homastores.com/dw/image/v2/BFDH_PRD/on/demandware.static/-/Sites-Homa_PT-Library/default/dwd87779c6/home/shoplook/hp-shop-trend-image_solidcolor.webp?sw=1920&amp;q=80" alt="Sala decorada" loading="lazy" decoding="async"><span class="hstl__pw hstl__pw--0"><span class="hstl__pin" tabindex="0" role="button" aria-label="Almofada SAVOY 35x50cm" data-ff-pin="473088"></span><span class="hstl__pop hstl__pop--ds"><a class="hstl__dsc" href="https://www.homastores.com/pt/pt/p-473088.html" data-item-id="473088" data-item-name="Almofada SAVOY 35x50cm" data-item-price="15.00" data-item-index="1" data-item-cat="Decoração &gt; Almofadas"><span class="hstl__dsc-img"><img src="https://img/473088.jpg" alt="" loading="lazy" decoding="async"></span><span class="hstl__dsc-txt"><span class="hstl__dsc-name">Almofada SAVOY 35x50cm</span><span class="hstl__dsc-price"><b>15,00 €</b><s>20,00 €</s></span></span></a><span class="hstl__dsc-acts"><button type="button" class="hstl__dsc-btn hstl__dsc-btn--wish" data-hstl-action="wishlist" data-item-id="473088" aria-label="Adicionar aos favoritos: Almofada SAVOY 35x50cm"><svg class="hstl__ico-heart" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M8 13.6S1.8 10 1.8 5.7A3.2 3.2 0 0 1 8 4.4a3.2 3.2 0 0 1 6.2 1.3C14.2 10 8 13.6 8 13.6Z" fill="none" stroke="#181818" stroke-width="1.2" stroke-linejoin="round"/></svg></button><button type="button" class="hstl__dsc-btn hstl__dsc-btn--cart" data-hstl-action="cart" data-item-id="473088" aria-label="Adicionar ao carrinho: Almofada SAVOY 35x50cm"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="#fff" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"><path d="M2.6 5.2h10.8l-.8 9H3.4z"/><path d="M5.6 5.2v-1a2.4 2.4 0 0 1 4.8 0v1"/><path d="M8 7.6v4M6 9.6h4"/></svg></button></span></span></span><span class="hstl__pw hstl__pw--1 hstl__pw--l hstl__pw--t hstl__pw--mb"><span class="hstl__pin" tabindex="0" role="button" aria-label="Quadro decorativo mulher MONA 58x78cm" data-ff-pin="474166"></span><span class="hstl__pop hstl__pop--ds"><a class="hstl__dsc" href="https://www.homastores.com/pt/pt/p-474166.html" data-item-id="474166" data-item-name="Quadro decorativo mulher MONA 58x78cm" data-item-price="30.00" data-item-index="2" data-item-cat="Decoração &gt; Quadros"><span class="hstl__dsc-img"><img src="https://img/474166.jpg" alt="" loading="lazy" decoding="async"></span><span class="hstl__dsc-txt"><span class="hstl__dsc-name">Quadro decorativo mulher MONA 58x78cm</span><span class="hstl__dsc-price"><b>30,00 €</b></span></span></a><span class="hstl__dsc-acts"><button type="button" class="hstl__dsc-btn hstl__dsc-btn--wish" data-hstl-action="wishlist" data-item-id="474166" aria-label="Adicionar aos favoritos: Quadro decorativo mulher MONA 58x78cm"><svg class="hstl__ico-heart" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M8 13.6S1.8 10 1.8 5.7A3.2 3.2 0 0 1 8 4.4a3.2 3.2 0 0 1 6.2 1.3C14.2 10 8 13.6 8 13.6Z" fill="none" stroke="#181818" stroke-width="1.2" stroke-linejoin="round"/></svg></button><button type="button" class="hstl__dsc-btn hstl__dsc-btn--cart" data-hstl-action="cart" data-item-id="474166" aria-label="Adicionar ao carrinho: Quadro decorativo mulher MONA 58x78cm"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="#fff" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"><path d="M2.6 5.2h10.8l-.8 9H3.4z"/><path d="M5.6 5.2v-1a2.4 2.4 0 0 1 4.8 0v1"/><path d="M8 7.6v4M6 9.6h4"/></svg></button></span></span></span></div><aside class="hstl__block"><a class="hstl__hl hstl__hl--0 is-default" href="https://www.homastores.com/pt/pt/p-473088.html" data-item-id="473088" data-item-name="Almofada SAVOY 35x50cm" data-item-price="15.00" data-item-index="1" data-item-cat="Decoração &gt; Almofadas"><span class="hstl__hl-img"><img src="https://img/473088.jpg" alt="Almofada SAVOY 35x50cm" loading="lazy" decoding="async"></span><span><span class="hstl__hl-name">Almofada SAVOY 35x50cm</span><span class="hstl__hl-desc">Desc</span><span class="hstl__price"><b>15,00 €</b><s>20,00 €</s><em>-25%</em></span></span></a><a class="hstl__hl hstl__hl--1" href="https://www.homastores.com/pt/pt/p-474166.html" data-item-id="474166" data-item-name="Quadro decorativo mulher MONA 58x78cm" data-item-price="30.00" data-item-index="2" data-item-cat="Decoração &gt; Quadros"><span class="hstl__hl-img"><img src="https://img/474166.jpg" alt="Quadro decorativo mulher MONA 58x78cm" loading="lazy" decoding="async"></span><span><span class="hstl__hl-name">Quadro decorativo mulher MONA 58x78cm</span><span class="hstl__hl-desc">Desc</span><span class="hstl__price"><b>30,00 €</b></span></span></a></aside></div><div class="hstl__list"><div class="hstl__track" role="list"><a class="hstl__card hstl__c hstl__c--0" role="listitem" href="https://www.homastores.com/pt/pt/p-473088.html" data-item-id="473088" data-item-name="Almofada SAVOY 35x50cm" data-item-price="15.00" data-item-index="1" data-item-cat="Decoração &gt; Almofadas"><span class="hstl__card-img"><img src="https://img/473088.jpg" alt="" loading="lazy" decoding="async"><span class="hstl__badges"><span class="hstl__badge hstl__badge--brand">Exclusivo online</span><span class="hstl__badge">x</span></span></span><span><span class="hstl__card-name">Almofada SAVOY 35x50cm</span><span class="hstl__card-desc">Desc</span><span class="hstl__price"><b>15,00 €</b><s>20,00 €</s><em>-25%</em></span></span></a><a class="hstl__card hstl__c hstl__c--1" role="listitem" href="https://www.homastores.com/pt/pt/p-474166.html" data-item-id="474166" data-item-name="Quadro decorativo mulher MONA 58x78cm" data-item-price="30.00" data-item-index="2" data-item-cat="Decoração &gt; Quadros"><span class="hstl__card-img"><img src="https://img/474166.jpg" alt="" loading="lazy" decoding="async"></span><span><span class="hstl__card-name">Quadro decorativo mulher MONA 58x78cm</span><span class="hstl__card-desc">Desc</span><span class="hstl__price"><b>30,00 €</b></span></span></a></div></div></div></div>
 
 </body>
 </html>

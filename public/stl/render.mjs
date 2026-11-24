@@ -1,6 +1,7 @@
 // Shop the Look — static renderer (no JavaScript). Used by the editor (preview + export) and the tests.
 // SFCC Page Designer "Raw HTML" does not run scripts, so the module is shipped as plain HTML + CSS:
 //  - pins / popover / active product / Color Block highlight work with :hover, :focus-within and :has()
+//  - pins and image cards: classic or the design-system variants (Figma "Shop the Look Chips" / "Shop the Look Cards")
 //  - pin positions and visual-editor overrides are rules in the module's own <style> (no inline styles)
 //  - tracking: data-ff-list-* on the module and data-item-* on every product link, read by the
 //    FeedForge GTM tag (public/tracking/ff-tracking.js) → view_item_list / select_item in the site's GA4 format.
@@ -14,6 +15,8 @@ const HEX = /^#[0-9a-f]{3,8}$/i;
 // outline icons in the design-system style (Icon/Navigation/Heart 16, Icon/Navigation/Bag-plus 24)
 const HEART = `<svg class="hstl__ico-heart" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M8 13.6S1.8 10 1.8 5.7A3.2 3.2 0 0 1 8 4.4a3.2 3.2 0 0 1 6.2 1.3C14.2 10 8 13.6 8 13.6Z" fill="none" stroke="#181818" stroke-width="1.2" stroke-linejoin="round"/></svg>`;
 const BAG = `<svg class="hstl__ico-bag" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" fill="none" stroke="#181818" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 8h15l-1 12.5h-13z"/><path d="M8.5 8V6.5a3.5 3.5 0 0 1 7 0V8"/><path d="M12 11.5v5M9.5 14h5"/></svg>`;
+// Icon/Navigation/Bag-plus 16 (white, on the dark quick-add square of the Shop the Look card)
+const BAG_SM = `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="#fff" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"><path d="M2.6 5.2h10.8l-.8 9H3.4z"/><path d="M5.6 5.2v-1a2.4 2.4 0 0 1 4.8 0v1"/><path d="M8 7.6v4M6 9.6h4"/></svg>`;
 const LABELS = {
   "pt-PT": { wishlistAll: "Adicionar aos favoritos", cartAll: "Adicionar tudo ao carrinho", wishlist: "Adicionar aos favoritos", cart: "Adicionar ao carrinho", list: "Shop the Look" },
   "es-ES": { wishlistAll: "Añadir a favoritos", cartAll: "Añadir todo a la cesta", wishlist: "Añadir a favoritos", cart: "Añadir a la cesta", list: "Shop the Look" },
@@ -48,13 +51,22 @@ export function renderStl(cfg, { css = "", preview = false } = {}) {
     return ` data-item-id="${esc(p.id)}" data-item-name="${esc(p.name)}" data-item-price="${num(p.price).toFixed(2)}" data-item-index="${i + 1}"${path.length ? ` data-item-cat="${esc(path.join(" > "))}"` : ""}`;
   };
   const href = (p) => esc(p.url || "#");
+  const dsPin = cfg.pinStyle === "ds", dsCard = cfg.cardStyle === "ds";
+  // Figma "Shop the Look Cards": price + struck list price (no discount badge)
+  const dsPrice = (p) => `<span class="hstl__dsc-price"><b>${esc(fmt.format(num(p.price)))}</b>${p.listPrice && p.listPrice > p.price ? `<s>${esc(fmt.format(p.listPrice))}</s>` : ""}</span>`;
 
   // pins: wrapper positioned at x/y; popover beside it (flipped near the edges, decided here)
   const pins = P.map((p, i) => {
     if (!p.pin || p.pin.show === false) return "";
     const x = num(p.pin.x, 50), y = num(p.pin.y, 50);
     const cls = ["hstl__pw", `hstl__pw--${i}`, x > 60 ? "hstl__pw--l" : "", y < 25 ? "hstl__pw--t" : y > 75 ? "hstl__pw--b" : "", y < 50 ? "hstl__pw--mb" : ""].filter(Boolean).join(" ");
-    return `<span class="${cls}"><span class="hstl__pin" tabindex="0" role="button" aria-label="${esc(p.name)}" data-ff-pin="${esc(p.id)}"></span>`
+    const pin = `<span class="hstl__pin" tabindex="0" role="button" aria-label="${esc(p.name)}" data-ff-pin="${esc(p.id)}"></span>`;
+    if (dsCard) return `<span class="${cls}">${pin}<span class="hstl__pop hstl__pop--ds">`
+      + `<a class="hstl__dsc" href="${href(p)}"${track(p, i)}><span class="hstl__dsc-img">${p.image ? `<img src="${esc(p.image)}" alt="" loading="lazy" decoding="async">` : ""}</span>`
+      + `<span class="hstl__dsc-txt"><span class="hstl__dsc-name">${esc(p.name)}</span>${dsPrice(p)}</span></a>`
+      + `<span class="hstl__dsc-acts"><button type="button" class="hstl__dsc-btn hstl__dsc-btn--wish" data-hstl-action="wishlist" data-item-id="${esc(p.id)}" aria-label="${esc(L.wishlist)}: ${esc(p.name)}">${HEART}</button>`
+      + `<button type="button" class="hstl__dsc-btn hstl__dsc-btn--cart" data-hstl-action="cart" data-item-id="${esc(p.id)}" aria-label="${esc(L.cart)}: ${esc(p.name)}">${BAG_SM}</button></span></span></span>`;
+    return `<span class="${cls}">${pin}`
       + `<a class="hstl__pop" href="${href(p)}"${track(p, i)}><span class="hstl__pop-name">${esc(p.name)}</span><span class="hstl__pop-price">${price(p)}</span><span class="hstl__pop-cta">${esc(cfg.popoverCta || "Ver produto")}</span></a></span>`;
   }).join("");
   const cta = cfg.cta && cfg.cta.show && cfg.cta.text;
@@ -90,7 +102,8 @@ export function renderStl(cfg, { css = "", preview = false } = {}) {
     const cardOn = (i) => `${root}:has(.hstl__c--${i}:hover)`;
     const list = (fn, tail) => P.map((_, i) => `${fn(i)} ${tail(i)}`).join(",");
     // pin pressed + popover open when its card is hovered (pin hover/focus is generic in widget.css), or by default
-    rules.push(`${list(cardOn, (i) => `.hstl__pw--${i} .hstl__pin`)},${idle} .hstl__pw--${A} .hstl__pin{background:var(--hstl-pin);box-shadow:0 0 0 2px #fff,0 2px 10px rgba(0,0,0,.3)}`);
+    const pinOn = dsPin ? "opacity:1;--hstl-dot:var(--hstl-dot-on);--hstl-ring:var(--hstl-ring-on);--hstl-glow:var(--hstl-glow-on)" : "background:var(--hstl-pin);box-shadow:0 0 0 2px #fff,0 2px 10px rgba(0,0,0,.3)";
+    rules.push(`${list(cardOn, (i) => `.hstl__pw--${i} .hstl__pin`)},${idle} .hstl__pw--${A} .hstl__pin{${pinOn}}`);
     rules.push(`${list(cardOn, (i) => `.hstl__pw--${i} .hstl__pin::after`)},${idle} .hstl__pw--${A} .hstl__pin::after{background:#fff}`);
     rules.push(`${list(cardOn, (i) => `.hstl__pw--${i} .hstl__pin::before`)},${idle} .hstl__pw--${A} .hstl__pin::before{animation:hstl-pulse 1.8s ease-out infinite}`);
     rules.push(`${list(cardOn, (i) => `.hstl__pw--${i} .hstl__pop`)},${idle} .hstl__pw--${A} .hstl__pop{opacity:1;transform:var(--hstl-pop-t,translateY(-50%));pointer-events:auto;visibility:visible}`);
@@ -100,7 +113,7 @@ export function renderStl(cfg, { css = "", preview = false } = {}) {
     if (!mood) rules.push(`${list(on, (i) => `.hstl__hl--${i}`)},${idle} .hstl__hl--${A}{opacity:1;visibility:visible}`);
   }
 
-  const classes = ["hstl", mood ? "hstl--mood" : "hstl--classic", mood && !preview ? "hstl--no-actions" : ""].filter(Boolean).join(" ");
+  const classes = ["hstl", mood ? "hstl--mood" : "hstl--classic", dsPin ? "hstl--pin-ds" : "", dsCard ? "hstl--card-ds" : "", (mood || dsCard) && !preview ? "hstl--no-actions" : ""].filter(Boolean).join(" ");
   return `<div class="${classes}" id="hstl-${id}" data-stl-id="${esc(cfg.id || id)}" data-ff-list-id="${esc(listId)}" data-ff-list-name="${esc(listName)}" aria-label="${esc(L.list)}">`
     + `<style>${css.trim()}${rules.length ? "\n" + rules.join("\n") : ""}</style>${body}</div>`;
 }

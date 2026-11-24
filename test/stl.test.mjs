@@ -150,6 +150,27 @@ assert.deepEqual((await call("GET", `/stl/render/${m.id}`)).json.vars, {}, "no o
 assert.ok(R.renderStl({ ...scfg }, { css: "" }).includes("#hstl-" + mb.id + "{--hstl-s-grid-gap-x:24px;--hstl-s-btn-bg:#583d3e}"), "overrides written as a module CSS rule");
 console.log("Aparência OK");
 
+// ---- pins / image cards: classic or design-system variants (Figma "Shop the Look Chips" / "Shop the Look Cards")
+assert.deepEqual([m.pinStyle, m.cardStyle], ["classic", "classic"], "defaults to the classic pins and card");
+let ds = (await call("PUT", `/stl/modules/${m.id}`, { ...m, pinStyle: "ds", cardStyle: "ds" })).json;
+assert.deepEqual([ds.pinStyle, ds.cardStyle], ["ds", "ds"], "variants stored");
+assert.deepEqual([(await call("PUT", `/stl/modules/${m.id}`, { ...ds, pinStyle: "neon", cardStyle: 1 })).json.pinStyle, (await call("GET", `/stl/modules/${m.id}`)).json.cardStyle], ["classic", "classic"], "unknown values fall back to classic");
+ds = (await call("PUT", `/stl/modules/${m.id}`, { ...ds, pinStyle: "ds", cardStyle: "ds" })).json;
+const dcfg = (await call("GET", `/stl/render/${m.id}`)).json;
+assert.deepEqual([dcfg.pinStyle, dcfg.cardStyle], ["ds", "ds"], "render carries the variants");
+const dhtml = R.renderStl(dcfg, { css: WCSS });
+assert.ok(dhtml.includes('class="hstl hstl--classic hstl--pin-ds hstl--card-ds hstl--no-actions"'), "variant classes; card buttons hidden on the site (no JS)");
+assert.ok(R.renderStl(dcfg, { css: "", preview: true }).includes('class="hstl hstl--classic hstl--pin-ds hstl--card-ds"'), "preview shows the card buttons");
+assert.ok(/<span class="hstl__pop hstl__pop--ds"><a class="hstl__dsc" href="[^"]*" data-item-id="473088"/.test(dhtml), "card = link with the tracking attributes (no buttons inside the link)");
+assert.ok(dhtml.includes('class="hstl__dsc-img"><img src=') && dhtml.includes('class="hstl__dsc-btn hstl__dsc-btn--cart" data-hstl-action="cart"'), "image + quick add hook");
+assert.ok(!dhtml.replace(/<style>[\s\S]*?<\/style>/, "").includes("hstl__pop-cta"), "no text link in the design-system card");
+assert.ok(dhtml.includes("--hstl-dot:var(--hstl-dot-on)") && !/\.hstl__pw--0 \.hstl__pin\{background:var\(--hstl-pin\)/.test(dhtml), "active pin rule uses the chip style");
+assert.ok(!/<script/i.test(dhtml) && !/\sstyle="/.test(dhtml), "still Raw HTML (no script, no inline styles)");
+const chtml = R.renderStl({ ...dcfg, pinStyle: "classic", cardStyle: "classic" }, { css: "" });
+assert.ok(chtml.includes('class="hstl hstl--classic"') && chtml.includes("hstl__pop-cta"), "classic unchanged");
+await call("PUT", `/stl/modules/${m.id}`, { ...ds, pinStyle: "classic", cardStyle: "classic" });
+console.log("Pontos e cartões OK");
+
 // tracking tag (lives in the site's GTM): valid JS, reads the same attributes the renderers write
 const TJS = fs.readFileSync(new URL("../public/tracking/ff-tracking.js", import.meta.url), "utf8");
 new vm.Script(TJS);
@@ -157,7 +178,8 @@ for (const a of ["data-ff-list-id", "data-ff-list-name", "data-item-id", "data-i
 // export-test.html: both layouts as they are exported (open on the dev site / locally to check)
 const ET = new URL("../public/stl/export-test.html", import.meta.url);
 const demo = (layout) => ({ ...cfg, id: `demo-${layout}`, name: `Demo ${layout}`, layout, title: "Coleção de Natal", eyebrow: "Shop the look", image: { src: "https://www.homastores.com/dw/image/v2/BFDH_PRD/on/demandware.static/-/Sites-Homa_PT-Library/default/dwd87779c6/home/shoplook/hp-shop-trend-image_solidcolor.webp?sw=1920&q=80", alt: "Sala decorada" }, products: cfg.products.filter((p) => !p.missing && !p.oos).slice(0, 4) });
-const exHtml = [R.renderStl(demo("classic"), { css: WCSS }), R.renderStl(demo("moodboard"), { css: WCSS })].map((h, i) => ctx.hstlSnippet({ html: h, name: i ? "Demo moodboard" : "Demo clássico" }).replace(/ gerado pelo FeedForge em [0-9: -]+/, ""));
+const exNames = ["Demo clássico", "Demo moodboard", "Demo design system (pontos + cartões)"];
+const exHtml = [R.renderStl(demo("classic"), { css: WCSS }), R.renderStl(demo("moodboard"), { css: WCSS }), R.renderStl({ ...demo("classic"), id: "demo-ds", name: "Demo design system", pinStyle: "ds", cardStyle: "ds" }, { css: WCSS })].map((h, i) => ctx.hstlSnippet({ html: h, name: exNames[i] }).replace(/ gerado pelo FeedForge em [0-9: -]+/, ""));
 if (process.env.UPDATE_SNAPSHOTS || !fs.existsSync(ET) || /HomaShopTheLook/.test(fs.readFileSync(ET, "utf8"))) {
   fs.writeFileSync(ET, `<!doctype html>\n<html lang="pt">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>Shop the Look · teste do código exportado</title>\n<style>body{margin:0;font-family:Gilroy,"Helvetica Neue",Arial,sans-serif}</style>\n</head>\n<body>\n<!-- Cada bloco abaixo é exatamente o que o "Gerar código" produz (Raw HTML: HTML + CSS, sem JavaScript) -->\n${exHtml.join("\n<div style=\"height:80px\"></div>\n")}\n</body>\n</html>\n`);
   console.log("export-test.html escrito");
