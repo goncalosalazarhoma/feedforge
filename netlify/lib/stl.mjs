@@ -36,8 +36,8 @@ export function sanitizeModule(m = {}) {
     blockColor: /^#[0-9a-f]{3,8}$/i.test(m.blockColor || "") ? m.blockColor : "#dfdbd2",
     cta: { show: !!m.cta?.show, text: String(m.cta?.text || "Ver todos os produtos"), url: String(m.cta?.url || ""), x: clampPct(m.cta?.x, 50), y: clampPct(m.cta?.y, 92) },
     popoverCta: String(m.popoverCta || "Ver produto"),
-    pinStyle: m.pinStyle === "ds" ? "ds" : "classic",     // classic = round pin with dot; ds = Figma "Shop the Look Chips"
-    cardStyle: m.cardStyle === "ds" ? "ds" : "classic",   // classic = glass popover; ds = Figma "Shop the Look Cards" (image + name + price)
+    pinStyle: m.pinStyle === "ds" ? "ds" : "classic",     // classic = round pin with dot; ds = Figma "Interactive Dots V2"
+    cardStyle: m.cardStyle === "ds" ? "ds" : "classic",   // classic = glass popover; ds = "Shop the Look Cards" below the dot (Figma "Interactive Dots V2")
     activeIndex: Math.max(0, Number(m.activeIndex) || 0),
     products: (Array.isArray(m.products) ? m.products : []).filter((p) => p && p.id).slice(0, 30).map((p) => ({
       id: String(p.id),
