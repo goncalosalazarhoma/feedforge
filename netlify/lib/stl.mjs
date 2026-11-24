@@ -36,6 +36,8 @@ export function sanitizeModule(m = {}) {
     blockColor: /^#[0-9a-f]{3,8}$/i.test(m.blockColor || "") ? m.blockColor : "#dfdbd2",
     cta: { show: !!m.cta?.show, text: String(m.cta?.text || "Ver todos os produtos"), url: String(m.cta?.url || ""), x: clampPct(m.cta?.x, 50), y: clampPct(m.cta?.y, 92) },
     popoverCta: String(m.popoverCta || "Ver produto"),
+    pinStyle: m.pinStyle === "ds" ? "ds" : "classic",     // classic = round pin with dot; ds = Figma "Shop the Look Chips"
+    cardStyle: m.cardStyle === "ds" ? "ds" : "classic",   // classic = glass popover; ds = Figma "Shop the Look Cards" (image + name + price)
     activeIndex: Math.max(0, Number(m.activeIndex) || 0),
     products: (Array.isArray(m.products) ? m.products : []).filter((p) => p && p.id).slice(0, 30).map((p) => ({
       id: String(p.id),
@@ -67,6 +69,7 @@ export function hydrate(mod, catalog) {
   return {
     id: mod.id, name: mod.name, locale: LOCALES[mod.market], currency: "EUR", market: mod.market, page: mod.page,
     eyebrow: mod.eyebrow, title: mod.title, image: mod.image, blockColor: mod.blockColor, cta: mod.cta, popoverCta: mod.popoverCta, activeIndex: mod.activeIndex,
+    pinStyle: mod.pinStyle || "classic", cardStyle: mod.cardStyle || "classic",
     layout: mod.layout || "classic", ...(mod.layout === "moodboard" ? { actions: mod.actions || { show: true } } : {}),
     vars: styleVars(mod.style, mod.layout || "classic"),
     products: mod.products.map((ref) => {
