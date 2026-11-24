@@ -35,7 +35,7 @@
 
   <h2>Instalar (uma vez)</h2>
   <ol>
-    <li><b>Importar</b> (mais rápido): GTM › Admin › <i>Import Container</i> › escolher o ficheiro em baixo › workspace atual › <b>Merge</b> › <i>Rename conflicting tags</i>. Cria a tag <i>FeedForge - tracking blocos</i> com disparo em <i>All Pages</i>.<br>
+    <li><b>Importar</b> (mais rápido): GTM › contentor <b>Hôma | Global (GTM-MFRK69Z)</b> › Admin › <i>Importar contentor</i> › escolher o ficheiro em baixo › workspace atual › <b>Merge</b> › <i>Rename conflicting tags</i>. Cria a tag <i>FeedForge - tracking blocos</i> com disparo em <i>All Pages</i>.<br>
       <span class="muted">Ou manualmente: Tags › New › Custom HTML › colar o código › Triggering: All Pages.</span></li>
     <li><b>Confirmar que o GA4 recebe estes eventos.</b> Se o site já tem uma tag GA4 de ecommerce que dispara em <code>view_item_list</code> / <code>select_item</code> (com “Send Ecommerce data” a partir do dataLayer), não é preciso mais nada. Se não tiver: criar o trigger <i>Custom Event</i> com o nome <code>^(view_item_list|select_item)$</code> (usar regex) e uma tag <i>Google Analytics: GA4 Event</i> com Event Name <code>{{Event}}</code> e <i>More settings › Ecommerce › Send Ecommerce data › Data Layer</i>.</li>
     <li><b>Testar</b> com o modo Preview do GTM numa página com um bloco: ao fazer scroll até ao bloco aparece <code>view_item_list</code>; ao clicar num produto, <code>select_item</code>. No GA4: <i>DebugView</i> e, depois, o relatório <i>Monetização › Ecommerce › Listas de itens</i>.</li>
@@ -57,23 +57,30 @@
   document.getElementById("code").textContent = tagHtml;
   const st = (t) => { const e = document.getElementById("st"); e.textContent = t; setTimeout(() => (e.textContent = ""), 2500); };
   document.getElementById("cp").onclick = async () => { await navigator.clipboard.writeText(tagHtml); st("Código copiado"); };
-  // GTM container import (merge): one Custom HTML tag on the built-in All Pages trigger (id 2147479553)
+  // GTM container import (merge) into "Hôma | Global" (GTM-MFRK69Z): one Custom HTML tag on the built-in All Pages trigger (id 2147479553).
+  // The import needs the real account / container ids (with zeros GTM answers "Não encontrado").
+  const A = "6000400789", C = "30435178", fp = String(Date.now());
   const container = {
     exportFormatVersion: 2,
     exportTime: new Date().toISOString().slice(0, 19).replace("T", " "),
     containerVersion: {
-      accountId: "0", containerId: "0", containerVersionId: "0",
+      path: `accounts/${A}/containers/${C}/versions/0`, accountId: A, containerId: C, containerVersionId: "0",
+      container: { path: `accounts/${A}/containers/${C}`, accountId: A, containerId: C, name: "Hôma | Global", publicId: "GTM-MFRK69Z", usageContext: ["WEB"], fingerprint: fp },
       tag: [{
-        accountId: "0", containerId: "0", tagId: "1",
+        accountId: A, containerId: C, tagId: "9001",
         name: "FeedForge - tracking blocos (Shop the Look / Page Builder)",
         type: "html",
         parameter: [
           { type: "TEMPLATE", key: "html", value: tagHtml },
           { type: "BOOLEAN", key: "supportDocumentWrite", value: "false" },
         ],
+        fingerprint: fp,
         firingTriggerId: ["2147479553"],
         tagFiringOption: "ONCE_PER_LOAD",
+        monitoringMetadata: { type: "MAP" },
+        consentSettings: { consentStatus: "NOT_SET" },
       }],
+      fingerprint: fp,
     },
   };
   document.getElementById("dl").onclick = () => {
