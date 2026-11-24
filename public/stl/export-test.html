@@ -208,18 +208,31 @@
 }
 
 /* ================= Design-system variants (opção por módulo) =================
-   Pontos: Figma "Shop the Look Chips" (9514:22669) · Cartão na imagem: Figma "Shop the Look Cards" (9532:5313) */
-.hstl--pin-ds{--hstl-dot:24px;--hstl-dot-on:24px;--hstl-ring:2px;--hstl-ring-on:5px;--hstl-glow:0 0 8px rgba(24,24,24,.2);--hstl-glow-on:0 0 8px rgba(24,24,24,.2)}
-.hstl--pin-ds .hstl__pin{left:-20px;top:-20px;width:40px;height:40px;background:none;box-shadow:none;opacity:.8;transition:opacity .15s}
-.hstl--pin-ds .hstl__pin:hover{transform:none}
-.hstl--pin-ds .hstl__pin::after{width:var(--hstl-dot);height:var(--hstl-dot);background:#fff;box-shadow:inset 0 0 0 var(--hstl-ring) #f3f3f3,var(--hstl-glow);transition:width .15s,height .15s,box-shadow .15s}
-.hstl--pin-ds .hstl__pin::before{display:none}
-.hstl--pin-ds .hstl__pw:hover .hstl__pin,.hstl--pin-ds .hstl__pw:focus-within .hstl__pin{background:none;box-shadow:none;opacity:1;--hstl-dot:var(--hstl-dot-on);--hstl-ring:var(--hstl-ring-on);--hstl-glow:var(--hstl-glow-on)}
-.hstl--pin-ds .hstl__pop{left:24px}
-.hstl--pin-ds .hstl__pw--l .hstl__pop{left:auto;right:24px}
+   Figma "Interactive Dots V2" (9532:3770): ponto de 44 px + cartão "Shop the Look Cards" logo abaixo do ponto (4 px),
+   alinhado à esquerda do ponto (Position=Left) ou à direita (Position=Right, pins na metade direita). */
+.hstl{--hstl-pin-r:14px}
 
-/* Shop the Look Card (desktop 320px: image 68×91 · name · price · wishlist + quick add) */
-.hstl--card-ds .hstl__pop{width:320px;padding:8px 12px;border:0;border-radius:0;background:#fff;-webkit-backdrop-filter:none;backdrop-filter:none;flex-direction:row;align-items:stretch;gap:12px}
+/* Ponto (Shop the Look Chips v2): área de 44 px; inativo = ponto branco de 16 px; ativo = ponto de 12 px, 80% */
+.hstl--pin-ds{--hstl-pin-r:22px;--hstl-dot:16px;--hstl-dot-on:12px;--hstl-glow:0 0 8px rgba(24,24,24,.2);--hstl-glow-on:0 0 12px rgba(24,24,24,.32);--hstl-op:1;--hstl-op-on:.8}
+.hstl--pin-ds .hstl__pin{left:-22px;top:-22px;width:44px;height:44px;background:none;box-shadow:none;opacity:var(--hstl-op);transition:opacity .15s}
+.hstl--pin-ds .hstl__pin:hover{transform:none}
+.hstl--pin-ds .hstl__pin::after{width:var(--hstl-dot);height:var(--hstl-dot);background:#fff;box-shadow:var(--hstl-glow);transition:width .15s,height .15s,box-shadow .15s}
+.hstl--pin-ds .hstl__pin::before{display:none}
+.hstl--pin-ds .hstl__pw:hover .hstl__pin,.hstl--pin-ds .hstl__pw:focus-within .hstl__pin{background:none;box-shadow:none;--hstl-op:var(--hstl-op-on);--hstl-dot:var(--hstl-dot-on);--hstl-glow:var(--hstl-glow-on)}
+.hstl--pin-ds .hstl__pin:focus-visible{outline-offset:-2px}
+
+/* Cartão (Shop the Look Cards): 320 px no desktop, 220 px no mobile; por baixo do ponto (por cima, perto do fundo da imagem);
+   alinhado com o lado do ponto e sempre a 12 px das margens da imagem */
+.hstl--card-ds{--hstl-dsc-w:320px}
+.hstl--card-ds .hstl__pop,.hstl--card-ds .hstl__pw--l .hstl__pop{--hstl-pop-t:none;width:var(--hstl-dsc-w);max-width:calc(100cqw - 24px);padding:8px 12px;border:0;border-radius:0;background:#fff;
+  -webkit-backdrop-filter:none;backdrop-filter:none;flex-direction:row;align-items:stretch;gap:12px;
+  top:calc(var(--hstl-pin-r) + 4px);bottom:auto;right:auto;
+  left:calc(clamp(12px, var(--x,50) * 1cqw - var(--hstl-pin-r), 100cqw - var(--hstl-dsc-w) - 12px) - var(--x,50) * 1cqw)}
+.hstl--card-ds .hstl__pw--l .hstl__pop{left:calc(clamp(12px, var(--x,50) * 1cqw + var(--hstl-pin-r) - var(--hstl-dsc-w), 100cqw - var(--hstl-dsc-w) - 12px) - var(--x,50) * 1cqw)}
+.hstl--card-ds .hstl__pw--b .hstl__pop{top:auto;bottom:calc(var(--hstl-pin-r) + 4px)}
+/* hover bridge: the 4 px gap between the dot and the card */
+.hstl--card-ds .hstl__pop::before,.hstl--card-ds .hstl__pw--l .hstl__pop::before{display:block;top:-8px;bottom:auto;left:0;right:0;width:auto;height:8px}
+.hstl--card-ds .hstl__pw--b .hstl__pop::before{top:auto;bottom:-8px}
 .hstl__dsc{display:flex;gap:12px;align-items:center;flex:1 1 0;min-width:0;color:var(--hstl-text);text-decoration:none}
 .hstl__dsc-img{flex:0 0 68px;height:91px;background:var(--hstl-card-bg);overflow:hidden}
 .hstl__dsc-img img{width:100%;height:100%;object-fit:cover;display:block}
@@ -238,11 +251,9 @@
 .hstl--no-actions .hstl__dsc-acts{display:none!important}
 
 @media (max-width:767px){
-  .hstl--pin-ds{--hstl-dot:12px;--hstl-dot-on:16px;--hstl-ring:0px;--hstl-ring-on:0px;--hstl-glow:0 0 12px rgba(24,24,24,.32)}
-  .hstl--pin-ds .hstl__pin{left:-22px;top:-22px;width:44px;height:44px}
-  /* mobile card: 220px, centred on the pin but kept 12px inside the image */
-  .hstl--card-ds .hstl__pop,.hstl--card-ds .hstl__pw--l .hstl__pop{width:220px;max-width:calc(100cqw - 24px);padding:8px 0 8px 8px;right:auto;
-    left:calc(clamp(12px, var(--x,50) * 1cqw - 110px, 100cqw - 232px) - var(--x,50) * 1cqw);flex-direction:column;gap:16px}
+  .hstl--card-ds{--hstl-dsc-w:220px}
+  .hstl--card-ds .hstl__pop,.hstl--card-ds .hstl__pw--l .hstl__pop{padding:8px 0 8px 8px;flex-direction:column;gap:16px}
+  .hstl--card-ds .hstl__pw--mb .hstl__pop{top:calc(var(--hstl-pin-r) + 4px);bottom:auto}
   .hstl__dsc{gap:8px;align-items:flex-start;padding-right:8px}
   .hstl__dsc-img{flex-basis:60px;height:80px}
   .hstl__dsc-txt{justify-content:flex-start}
@@ -466,18 +477,31 @@
 }
 
 /* ================= Design-system variants (opção por módulo) =================
-   Pontos: Figma "Shop the Look Chips" (9514:22669) · Cartão na imagem: Figma "Shop the Look Cards" (9532:5313) */
-.hstl--pin-ds{--hstl-dot:24px;--hstl-dot-on:24px;--hstl-ring:2px;--hstl-ring-on:5px;--hstl-glow:0 0 8px rgba(24,24,24,.2);--hstl-glow-on:0 0 8px rgba(24,24,24,.2)}
-.hstl--pin-ds .hstl__pin{left:-20px;top:-20px;width:40px;height:40px;background:none;box-shadow:none;opacity:.8;transition:opacity .15s}
-.hstl--pin-ds .hstl__pin:hover{transform:none}
-.hstl--pin-ds .hstl__pin::after{width:var(--hstl-dot);height:var(--hstl-dot);background:#fff;box-shadow:inset 0 0 0 var(--hstl-ring) #f3f3f3,var(--hstl-glow);transition:width .15s,height .15s,box-shadow .15s}
-.hstl--pin-ds .hstl__pin::before{display:none}
-.hstl--pin-ds .hstl__pw:hover .hstl__pin,.hstl--pin-ds .hstl__pw:focus-within .hstl__pin{background:none;box-shadow:none;opacity:1;--hstl-dot:var(--hstl-dot-on);--hstl-ring:var(--hstl-ring-on);--hstl-glow:var(--hstl-glow-on)}
-.hstl--pin-ds .hstl__pop{left:24px}
-.hstl--pin-ds .hstl__pw--l .hstl__pop{left:auto;right:24px}
+   Figma "Interactive Dots V2" (9532:3770): ponto de 44 px + cartão "Shop the Look Cards" logo abaixo do ponto (4 px),
+   alinhado à esquerda do ponto (Position=Left) ou à direita (Position=Right, pins na metade direita). */
+.hstl{--hstl-pin-r:14px}
 
-/* Shop the Look Card (desktop 320px: image 68×91 · name · price · wishlist + quick add) */
-.hstl--card-ds .hstl__pop{width:320px;padding:8px 12px;border:0;border-radius:0;background:#fff;-webkit-backdrop-filter:none;backdrop-filter:none;flex-direction:row;align-items:stretch;gap:12px}
+/* Ponto (Shop the Look Chips v2): área de 44 px; inativo = ponto branco de 16 px; ativo = ponto de 12 px, 80% */
+.hstl--pin-ds{--hstl-pin-r:22px;--hstl-dot:16px;--hstl-dot-on:12px;--hstl-glow:0 0 8px rgba(24,24,24,.2);--hstl-glow-on:0 0 12px rgba(24,24,24,.32);--hstl-op:1;--hstl-op-on:.8}
+.hstl--pin-ds .hstl__pin{left:-22px;top:-22px;width:44px;height:44px;background:none;box-shadow:none;opacity:var(--hstl-op);transition:opacity .15s}
+.hstl--pin-ds .hstl__pin:hover{transform:none}
+.hstl--pin-ds .hstl__pin::after{width:var(--hstl-dot);height:var(--hstl-dot);background:#fff;box-shadow:var(--hstl-glow);transition:width .15s,height .15s,box-shadow .15s}
+.hstl--pin-ds .hstl__pin::before{display:none}
+.hstl--pin-ds .hstl__pw:hover .hstl__pin,.hstl--pin-ds .hstl__pw:focus-within .hstl__pin{background:none;box-shadow:none;--hstl-op:var(--hstl-op-on);--hstl-dot:var(--hstl-dot-on);--hstl-glow:var(--hstl-glow-on)}
+.hstl--pin-ds .hstl__pin:focus-visible{outline-offset:-2px}
+
+/* Cartão (Shop the Look Cards): 320 px no desktop, 220 px no mobile; por baixo do ponto (por cima, perto do fundo da imagem);
+   alinhado com o lado do ponto e sempre a 12 px das margens da imagem */
+.hstl--card-ds{--hstl-dsc-w:320px}
+.hstl--card-ds .hstl__pop,.hstl--card-ds .hstl__pw--l .hstl__pop{--hstl-pop-t:none;width:var(--hstl-dsc-w);max-width:calc(100cqw - 24px);padding:8px 12px;border:0;border-radius:0;background:#fff;
+  -webkit-backdrop-filter:none;backdrop-filter:none;flex-direction:row;align-items:stretch;gap:12px;
+  top:calc(var(--hstl-pin-r) + 4px);bottom:auto;right:auto;
+  left:calc(clamp(12px, var(--x,50) * 1cqw - var(--hstl-pin-r), 100cqw - var(--hstl-dsc-w) - 12px) - var(--x,50) * 1cqw)}
+.hstl--card-ds .hstl__pw--l .hstl__pop{left:calc(clamp(12px, var(--x,50) * 1cqw + var(--hstl-pin-r) - var(--hstl-dsc-w), 100cqw - var(--hstl-dsc-w) - 12px) - var(--x,50) * 1cqw)}
+.hstl--card-ds .hstl__pw--b .hstl__pop{top:auto;bottom:calc(var(--hstl-pin-r) + 4px)}
+/* hover bridge: the 4 px gap between the dot and the card */
+.hstl--card-ds .hstl__pop::before,.hstl--card-ds .hstl__pw--l .hstl__pop::before{display:block;top:-8px;bottom:auto;left:0;right:0;width:auto;height:8px}
+.hstl--card-ds .hstl__pw--b .hstl__pop::before{top:auto;bottom:-8px}
 .hstl__dsc{display:flex;gap:12px;align-items:center;flex:1 1 0;min-width:0;color:var(--hstl-text);text-decoration:none}
 .hstl__dsc-img{flex:0 0 68px;height:91px;background:var(--hstl-card-bg);overflow:hidden}
 .hstl__dsc-img img{width:100%;height:100%;object-fit:cover;display:block}
@@ -496,11 +520,9 @@
 .hstl--no-actions .hstl__dsc-acts{display:none!important}
 
 @media (max-width:767px){
-  .hstl--pin-ds{--hstl-dot:12px;--hstl-dot-on:16px;--hstl-ring:0px;--hstl-ring-on:0px;--hstl-glow:0 0 12px rgba(24,24,24,.32)}
-  .hstl--pin-ds .hstl__pin{left:-22px;top:-22px;width:44px;height:44px}
-  /* mobile card: 220px, centred on the pin but kept 12px inside the image */
-  .hstl--card-ds .hstl__pop,.hstl--card-ds .hstl__pw--l .hstl__pop{width:220px;max-width:calc(100cqw - 24px);padding:8px 0 8px 8px;right:auto;
-    left:calc(clamp(12px, var(--x,50) * 1cqw - 110px, 100cqw - 232px) - var(--x,50) * 1cqw);flex-direction:column;gap:16px}
+  .hstl--card-ds{--hstl-dsc-w:220px}
+  .hstl--card-ds .hstl__pop,.hstl--card-ds .hstl__pw--l .hstl__pop{padding:8px 0 8px 8px;flex-direction:column;gap:16px}
+  .hstl--card-ds .hstl__pw--mb .hstl__pop{top:calc(var(--hstl-pin-r) + 4px);bottom:auto}
   .hstl__dsc{gap:8px;align-items:flex-start;padding-right:8px}
   .hstl__dsc-img{flex-basis:60px;height:80px}
   .hstl__dsc-txt{justify-content:flex-start}
@@ -722,18 +744,31 @@
 }
 
 /* ================= Design-system variants (opção por módulo) =================
-   Pontos: Figma "Shop the Look Chips" (9514:22669) · Cartão na imagem: Figma "Shop the Look Cards" (9532:5313) */
-.hstl--pin-ds{--hstl-dot:24px;--hstl-dot-on:24px;--hstl-ring:2px;--hstl-ring-on:5px;--hstl-glow:0 0 8px rgba(24,24,24,.2);--hstl-glow-on:0 0 8px rgba(24,24,24,.2)}
-.hstl--pin-ds .hstl__pin{left:-20px;top:-20px;width:40px;height:40px;background:none;box-shadow:none;opacity:.8;transition:opacity .15s}
-.hstl--pin-ds .hstl__pin:hover{transform:none}
-.hstl--pin-ds .hstl__pin::after{width:var(--hstl-dot);height:var(--hstl-dot);background:#fff;box-shadow:inset 0 0 0 var(--hstl-ring) #f3f3f3,var(--hstl-glow);transition:width .15s,height .15s,box-shadow .15s}
-.hstl--pin-ds .hstl__pin::before{display:none}
-.hstl--pin-ds .hstl__pw:hover .hstl__pin,.hstl--pin-ds .hstl__pw:focus-within .hstl__pin{background:none;box-shadow:none;opacity:1;--hstl-dot:var(--hstl-dot-on);--hstl-ring:var(--hstl-ring-on);--hstl-glow:var(--hstl-glow-on)}
-.hstl--pin-ds .hstl__pop{left:24px}
-.hstl--pin-ds .hstl__pw--l .hstl__pop{left:auto;right:24px}
+   Figma "Interactive Dots V2" (9532:3770): ponto de 44 px + cartão "Shop the Look Cards" logo abaixo do ponto (4 px),
+   alinhado à esquerda do ponto (Position=Left) ou à direita (Position=Right, pins na metade direita). */
+.hstl{--hstl-pin-r:14px}
 
-/* Shop the Look Card (desktop 320px: image 68×91 · name · price · wishlist + quick add) */
-.hstl--card-ds .hstl__pop{width:320px;padding:8px 12px;border:0;border-radius:0;background:#fff;-webkit-backdrop-filter:none;backdrop-filter:none;flex-direction:row;align-items:stretch;gap:12px}
+/* Ponto (Shop the Look Chips v2): área de 44 px; inativo = ponto branco de 16 px; ativo = ponto de 12 px, 80% */
+.hstl--pin-ds{--hstl-pin-r:22px;--hstl-dot:16px;--hstl-dot-on:12px;--hstl-glow:0 0 8px rgba(24,24,24,.2);--hstl-glow-on:0 0 12px rgba(24,24,24,.32);--hstl-op:1;--hstl-op-on:.8}
+.hstl--pin-ds .hstl__pin{left:-22px;top:-22px;width:44px;height:44px;background:none;box-shadow:none;opacity:var(--hstl-op);transition:opacity .15s}
+.hstl--pin-ds .hstl__pin:hover{transform:none}
+.hstl--pin-ds .hstl__pin::after{width:var(--hstl-dot);height:var(--hstl-dot);background:#fff;box-shadow:var(--hstl-glow);transition:width .15s,height .15s,box-shadow .15s}
+.hstl--pin-ds .hstl__pin::before{display:none}
+.hstl--pin-ds .hstl__pw:hover .hstl__pin,.hstl--pin-ds .hstl__pw:focus-within .hstl__pin{background:none;box-shadow:none;--hstl-op:var(--hstl-op-on);--hstl-dot:var(--hstl-dot-on);--hstl-glow:var(--hstl-glow-on)}
+.hstl--pin-ds .hstl__pin:focus-visible{outline-offset:-2px}
+
+/* Cartão (Shop the Look Cards): 320 px no desktop, 220 px no mobile; por baixo do ponto (por cima, perto do fundo da imagem);
+   alinhado com o lado do ponto e sempre a 12 px das margens da imagem */
+.hstl--card-ds{--hstl-dsc-w:320px}
+.hstl--card-ds .hstl__pop,.hstl--card-ds .hstl__pw--l .hstl__pop{--hstl-pop-t:none;width:var(--hstl-dsc-w);max-width:calc(100cqw - 24px);padding:8px 12px;border:0;border-radius:0;background:#fff;
+  -webkit-backdrop-filter:none;backdrop-filter:none;flex-direction:row;align-items:stretch;gap:12px;
+  top:calc(var(--hstl-pin-r) + 4px);bottom:auto;right:auto;
+  left:calc(clamp(12px, var(--x,50) * 1cqw - var(--hstl-pin-r), 100cqw - var(--hstl-dsc-w) - 12px) - var(--x,50) * 1cqw)}
+.hstl--card-ds .hstl__pw--l .hstl__pop{left:calc(clamp(12px, var(--x,50) * 1cqw + var(--hstl-pin-r) - var(--hstl-dsc-w), 100cqw - var(--hstl-dsc-w) - 12px) - var(--x,50) * 1cqw)}
+.hstl--card-ds .hstl__pw--b .hstl__pop{top:auto;bottom:calc(var(--hstl-pin-r) + 4px)}
+/* hover bridge: the 4 px gap between the dot and the card */
+.hstl--card-ds .hstl__pop::before,.hstl--card-ds .hstl__pw--l .hstl__pop::before{display:block;top:-8px;bottom:auto;left:0;right:0;width:auto;height:8px}
+.hstl--card-ds .hstl__pw--b .hstl__pop::before{top:auto;bottom:-8px}
 .hstl__dsc{display:flex;gap:12px;align-items:center;flex:1 1 0;min-width:0;color:var(--hstl-text);text-decoration:none}
 .hstl__dsc-img{flex:0 0 68px;height:91px;background:var(--hstl-card-bg);overflow:hidden}
 .hstl__dsc-img img{width:100%;height:100%;object-fit:cover;display:block}
@@ -752,11 +787,9 @@
 .hstl--no-actions .hstl__dsc-acts{display:none!important}
 
 @media (max-width:767px){
-  .hstl--pin-ds{--hstl-dot:12px;--hstl-dot-on:16px;--hstl-ring:0px;--hstl-ring-on:0px;--hstl-glow:0 0 12px rgba(24,24,24,.32)}
-  .hstl--pin-ds .hstl__pin{left:-22px;top:-22px;width:44px;height:44px}
-  /* mobile card: 220px, centred on the pin but kept 12px inside the image */
-  .hstl--card-ds .hstl__pop,.hstl--card-ds .hstl__pw--l .hstl__pop{width:220px;max-width:calc(100cqw - 24px);padding:8px 0 8px 8px;right:auto;
-    left:calc(clamp(12px, var(--x,50) * 1cqw - 110px, 100cqw - 232px) - var(--x,50) * 1cqw);flex-direction:column;gap:16px}
+  .hstl--card-ds{--hstl-dsc-w:220px}
+  .hstl--card-ds .hstl__pop,.hstl--card-ds .hstl__pw--l .hstl__pop{padding:8px 0 8px 8px;flex-direction:column;gap:16px}
+  .hstl--card-ds .hstl__pw--mb .hstl__pop{top:calc(var(--hstl-pin-r) + 4px);bottom:auto}
   .hstl__dsc{gap:8px;align-items:flex-start;padding-right:8px}
   .hstl__dsc-img{flex-basis:60px;height:80px}
   .hstl__dsc-txt{justify-content:flex-start}
@@ -771,7 +804,7 @@
 #hstl-demo-ds{--hstl-block:#dfdbd2}
 #hstl-demo-ds .hstl__pw--0{left:53%;top:59%;--x:53}
 #hstl-demo-ds .hstl__pw--1{left:100%;top:0%;--x:100}
-#hstl-demo-ds:has(.hstl__c--0:hover) .hstl__pw--0 .hstl__pin,#hstl-demo-ds:has(.hstl__c--1:hover) .hstl__pw--1 .hstl__pin,#hstl-demo-ds:not(:has(.hstl__pw:hover,.hstl__pw:focus-within,.hstl__c:hover)) .hstl__pw--0 .hstl__pin{opacity:1;--hstl-dot:var(--hstl-dot-on);--hstl-ring:var(--hstl-ring-on);--hstl-glow:var(--hstl-glow-on)}
+#hstl-demo-ds:has(.hstl__c--0:hover) .hstl__pw--0 .hstl__pin,#hstl-demo-ds:has(.hstl__c--1:hover) .hstl__pw--1 .hstl__pin,#hstl-demo-ds:not(:has(.hstl__pw:hover,.hstl__pw:focus-within,.hstl__c:hover)) .hstl__pw--0 .hstl__pin{--hstl-op:var(--hstl-op-on);--hstl-dot:var(--hstl-dot-on);--hstl-glow:var(--hstl-glow-on)}
 #hstl-demo-ds:has(.hstl__c--0:hover) .hstl__pw--0 .hstl__pin::after,#hstl-demo-ds:has(.hstl__c--1:hover) .hstl__pw--1 .hstl__pin::after,#hstl-demo-ds:not(:has(.hstl__pw:hover,.hstl__pw:focus-within,.hstl__c:hover)) .hstl__pw--0 .hstl__pin::after{background:#fff}
 #hstl-demo-ds:has(.hstl__c--0:hover) .hstl__pw--0 .hstl__pin::before,#hstl-demo-ds:has(.hstl__c--1:hover) .hstl__pw--1 .hstl__pin::before,#hstl-demo-ds:not(:has(.hstl__pw:hover,.hstl__pw:focus-within,.hstl__c:hover)) .hstl__pw--0 .hstl__pin::before{animation:hstl-pulse 1.8s ease-out infinite}
 #hstl-demo-ds:has(.hstl__c--0:hover) .hstl__pw--0 .hstl__pop,#hstl-demo-ds:has(.hstl__c--1:hover) .hstl__pw--1 .hstl__pop,#hstl-demo-ds:not(:has(.hstl__pw:hover,.hstl__pw:focus-within,.hstl__c:hover)) .hstl__pw--0 .hstl__pop{opacity:1;transform:var(--hstl-pop-t,translateY(-50%));pointer-events:auto;visibility:visible}

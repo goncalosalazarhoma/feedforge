@@ -1,7 +1,7 @@
 // Shop the Look — static renderer (no JavaScript). Used by the editor (preview + export) and the tests.
 // SFCC Page Designer "Raw HTML" does not run scripts, so the module is shipped as plain HTML + CSS:
 //  - pins / popover / active product / Color Block highlight work with :hover, :focus-within and :has()
-//  - pins and image cards: classic or the design-system variants (Figma "Shop the Look Chips" / "Shop the Look Cards")
+//  - pins and image cards: classic or the design-system variants (Figma "Interactive Dots V2": ponto + cartão por baixo)
 //  - pin positions and visual-editor overrides are rules in the module's own <style> (no inline styles)
 //  - tracking: data-ff-list-* on the module and data-item-* on every product link, read by the
 //    FeedForge GTM tag (public/tracking/ff-tracking.js) → view_item_list / select_item in the site's GA4 format.
@@ -102,7 +102,7 @@ export function renderStl(cfg, { css = "", preview = false } = {}) {
     const cardOn = (i) => `${root}:has(.hstl__c--${i}:hover)`;
     const list = (fn, tail) => P.map((_, i) => `${fn(i)} ${tail(i)}`).join(",");
     // pin pressed + popover open when its card is hovered (pin hover/focus is generic in widget.css), or by default
-    const pinOn = dsPin ? "opacity:1;--hstl-dot:var(--hstl-dot-on);--hstl-ring:var(--hstl-ring-on);--hstl-glow:var(--hstl-glow-on)" : "background:var(--hstl-pin);box-shadow:0 0 0 2px #fff,0 2px 10px rgba(0,0,0,.3)";
+    const pinOn = dsPin ? "--hstl-op:var(--hstl-op-on);--hstl-dot:var(--hstl-dot-on);--hstl-glow:var(--hstl-glow-on)" : "background:var(--hstl-pin);box-shadow:0 0 0 2px #fff,0 2px 10px rgba(0,0,0,.3)";
     rules.push(`${list(cardOn, (i) => `.hstl__pw--${i} .hstl__pin`)},${idle} .hstl__pw--${A} .hstl__pin{${pinOn}}`);
     rules.push(`${list(cardOn, (i) => `.hstl__pw--${i} .hstl__pin::after`)},${idle} .hstl__pw--${A} .hstl__pin::after{background:#fff}`);
     rules.push(`${list(cardOn, (i) => `.hstl__pw--${i} .hstl__pin::before`)},${idle} .hstl__pw--${A} .hstl__pin::before{animation:hstl-pulse 1.8s ease-out infinite}`);
