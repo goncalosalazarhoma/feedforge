@@ -25,7 +25,7 @@
   const ACTION_DEFAULTS = { pt: ["Adicionar aos favoritos", "Adicionar tudo ao carrinho"], es: ["Añadir a favoritos", "Añadir todo a la cesta"] };
   let SCHEMA = null; // public/stl/style-schema.mjs (visual editor fields, shared with the API)
   const schema = async () => (SCHEMA ||= await import("/stl/style-schema.mjs"));
-  const blank = () => ({ name: "Novo Shop the Look", market: "pt", page: "homepage", status: "draft", layout: "classic", actions: { show: true, wishlistText: "", cartText: "" }, style: {}, eyebrow: "Shop the look", title: "", image: { src: "", alt: "" }, blockColor: "#dfdbd2", cta: { show: true, text: "Ver todos os produtos", url: "", x: 50, y: 92 }, popoverCta: "Ver produto", activeIndex: 0, products: [] });
+  const blank = () => ({ name: "Novo Shop the Look", market: "pt", page: "homepage", status: "draft", layout: "classic", actions: { show: true, wishlistText: "", cartText: "" }, style: {}, eyebrow: "Shop the look", title: "", image: { src: "", alt: "" }, blockColor: "#dfdbd2", cta: { show: true, text: "Ver todos os produtos", url: "", x: 50, y: 92 }, popoverCta: "Ver produto", pinStyle: "classic", cardStyle: "classic", activeIndex: 0, products: [] });
   const dirty = () => ST.mod && JSON.stringify(ST.mod) !== ST.saved;
   const fmt = PP.fmt;
   const get = (o, path) => path.split(".").reduce((a, k) => a?.[k], o);
@@ -48,6 +48,7 @@
     return {
       id: m.id || "stl-preview", name: m.name, locale: m.market === "es" ? "es-ES" : "pt-PT", currency: "EUR",
       eyebrow: m.eyebrow, title: m.title, image: m.image, blockColor: m.blockColor, cta: m.cta, popoverCta: m.popoverCta, activeIndex: m.activeIndex,
+      pinStyle: m.pinStyle || "classic", cardStyle: m.cardStyle || "classic",
       layout: m.layout || "classic", actions: m.actions || { show: true }, preview: true,
       vars: SCHEMA ? SCHEMA.styleVars(m.style || {}, m.layout || "classic") : {},
       products: m.products.map((ref) => {
@@ -258,7 +259,13 @@
         <div class="grid two" style="margin-top:8px">${inp("cta.text", "Texto")}${inp("cta.url", "Link")}</div>
         <div class="grid two">${inp("cta.x", "Posição X (%)", 'type="number" min="0" max="100" step="0.5"')}${inp("cta.y", "Posição Y (%)", 'type="number" min="0" max="100" step="0.5"')}</div>
       </div>
-      ${inp("popoverCta", "Texto do link no popover")}
+      <div class="card" style="padding:10px 12px">
+        <div class="grid two">
+          <label class="f">Pontos na imagem<select data-k="pinStyle">${[["classic", "Clássico (pin com ponto)"], ["ds", "Design System (Shop the Look Chips)"]].map(([v, l]) => `<option value="${v}" ${(m.pinStyle || "classic") === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+          <label class="f">Cartão do produto na imagem<select data-k="cardStyle">${[["classic", "Clássico (vidro, com link)"], ["ds", "Design System (Shop the Look Cards)"]].map(([v, l]) => `<option value="${v}" ${(m.cardStyle || "classic") === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+        </div>
+        ${(m.cardStyle || "classic") === "classic" ? inp("popoverCta", "Texto do link no cartão") : `<p class="small muted" style="margin:6px 0 0">Cartão com imagem, nome e preço (Figma “Shop the Look Cards”). Os botões de favoritos e carrinho aparecem na pré-visualização; no site só depois de a equipa SFCC ligar o carrinho e os favoritos (como no moodboard).</p>`}
+      </div>
       <label class="f">Produto ativo ao abrir<select data-k="activeIndex" data-num="1">${m.products.length ? m.products.map((p, i) => `<option value="${i}" ${m.activeIndex === i ? "selected" : ""}>${i + 1}. ${esc(ST.pcache[m.market][p.id]?.title || p.id)}</option>`).join("") : `<option value="0">— adiciona produtos —</option>`}</select></label>
     </div>`;
     const imgInfo = () => {
@@ -282,6 +289,7 @@
         if (k === "blockColor") $$('[data-k="blockColor"]', box).forEach((o) => { if (o !== el) o.value = v; });
         if (k === "image.src") imgInfo();
         if (k === "name") $("h1", main).textContent = v || "—";
+        if (k === "cardStyle") { changed(); return drawModulo(box, main); } // shows / hides the popover link text
         if (k === "layout") { m.actions ||= { show: true, wishlistText: "", cartText: "" }; return drawEditor(main); } // header + tabs + frame follow the layout
         if (k === "market" && v !== prevMarket) { ST.picker = { ...ST.picker, category: "", subcategory: "", page: 1, result: null }; await guard(() => fetchIds(v, m.products.map((p) => p.id))); if (m.layout === "moodboard") { changed(); return drawModulo(box, main); } }
         changed();
