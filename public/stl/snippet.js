@@ -1,23 +1,13 @@
 /* hôma · Shop the Look — export helpers (FeedForge editor + tests).
-   hstlSnippet: embed code for an SFCC Page Designer HTML/Custom block.
+   hstlSnippet: embed code for an SFCC Page Designer Raw HTML component (static HTML + CSS).
    hstlValidate: checks run before export. */
 (function (g) {
   "use strict";
-  const safeJson = (o) => JSON.stringify(o).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
 
-  // config = hydrated config (products already carry name/price/image/url from the feed)
-  function hstlSnippet({ css, js, config, name = "", includeAssets = true }) {
-    const id = String(config.id || "stl");
-    const clean = { ...config, products: (config.products || []).filter((p) => !p.missing) };
-    const head = `<!-- hôma · Shop the Look · ${String(name || id).replace(/--/g, "-")} · gerado pelo FeedForge em ${new Date().toISOString().slice(0, 16).replace("T", " ")} -->`;
-    const assets = includeAssets
-      ? `\n<!-- CSS + JS do widget: basta uma vez por página (se houver vários Shop the Look na mesma página, os seguintes podem ficar só com a <section> e o JSON) -->\n<style>\n${css.trim()}\n</style>\n<script>\n${js.trim()}\n</script>`
-      : "";
-    return `${head}${assets}
-<section class="hstl" data-stl-id="${id.replace(/"/g, "")}" aria-label="Shop the Look"></section>
-<script type="application/json" data-stl-config="${id.replace(/"/g, "")}">${safeJson(clean)}</script>
-<script>window.HomaShopTheLook && window.HomaShopTheLook.autoMount();</script>
-`;
+  // html = output of renderStl (public/stl/render.mjs): static HTML + CSS, no <script> (Page Designer Raw HTML does not run JS)
+  function hstlSnippet({ html, name = "" }) {
+    const head = `<!-- hôma · Shop the Look · ${String(name || "").replace(/--/g, "-")} · gerado pelo FeedForge em ${new Date().toISOString().slice(0, 16).replace("T", " ")} · HTML + CSS, sem JavaScript; tracking pela tag FeedForge no GTM -->`;
+    return `${head}\n${String(html || "").replace(/<script[\s\S]*?<\/script>/gi, "")}\n`;
   }
 
   // module = editor state, hydrated = config returned by /api/stl/render

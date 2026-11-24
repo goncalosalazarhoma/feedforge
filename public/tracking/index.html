@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FeedForge · tracking dos blocos</title>
+<style>
+  :root{--line:#e7e1d8;--soft:#f6f3ee;--ink:#1f1d1a;--muted:#6f685f;--accent:#b8860b}
+  body{margin:0;font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink);background:#fbfaf7}
+  main{max-width:860px;margin:0 auto;padding:32px 20px 64px}
+  h1{font-size:26px;margin:0 0 4px}h2{font-size:18px;margin:32px 0 8px}
+  .muted{color:var(--muted)}code{background:var(--soft);padding:1px 5px;border-radius:4px;font-size:13px}
+  pre{background:#1f1d1a;color:#efe9df;padding:14px;border-radius:8px;overflow:auto;font-size:12px;max-height:340px}
+  ol li{margin:6px 0}
+  .btn{display:inline-block;border:1px solid var(--ink);background:#fff;color:var(--ink);padding:8px 14px;border-radius:8px;cursor:pointer;font:inherit;text-decoration:none;margin:4px 8px 4px 0}
+  .btn.pri{background:var(--ink);color:#fff}
+  table{border-collapse:collapse;width:100%;font-size:14px}td,th{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
+  .note{border-left:3px solid var(--accent);background:#fff;padding:10px 14px;margin:12px 0}
+</style>
+</head>
+<body>
+<main>
+  <a href="/#stl" class="muted">← FeedForge</a>
+  <h1>Tracking dos blocos do FeedForge</h1>
+  <p class="muted">Shop the Look e Page Builder colados como <b>Raw HTML</b> no Page Designer. O Raw HTML não corre JavaScript, por isso o tracking é feito por <b>uma tag no GTM do site</b> que lê os atributos que o FeedForge escreve no HTML e envia os eventos no mesmo formato GA4 que o site já usa no <code>view_item</code>.</p>
+
+  <h2>O que é enviado para o dataLayer</h2>
+  <table>
+    <tr><th>Evento</th><th>Quando</th><th>Dados</th></tr>
+    <tr><td><code>view_item_list</code></td><td>Quando o módulo / bloco de produtos fica pelo menos 50% visível (uma vez por página)</td><td rowspan="2"><code>ecommerce.item_list_id</code>, <code>item_list_name</code> e <code>items[]</code> com <code>item_id</code>, <code>item_name</code>, <code>price</code>, <code>quantity</code>, <code>index</code>, <code>item_category</code> ("Produtos"), <code>item_category2</code> / <code>item_category3</code> (categoria do feed), <code>item_list_id</code>, <code>item_list_name</code></td></tr>
+    <tr><td><code>select_item</code></td><td>Clique num produto (cartão, popover do pin, destaque do Color Block)</td></tr>
+    <tr><td><code>stl_pin_select</code></td><td>Abrir um pin do Shop the Look (toque, clique ou teclado)</td><td><code>stl_id</code>, <code>item_list_id</code>, <code>item_id</code>, <code>item_name</code></td></tr>
+  </table>
+  <p class="muted">Nomes das listas: <code>Shop the Look - &lt;nome do módulo&gt;</code> (id <code>stl_&lt;id&gt;</code>) e <code>&lt;nome do elemento&gt; - &lt;título do bloco&gt;</code> no Page Builder (id <code>pb_&lt;elemento&gt;_&lt;bloco&gt;</code>). Antes de cada evento de ecommerce é enviado <code>{ ecommerce: null }</code>, como recomenda a Google.</p>
+
+  <h2>Instalar (uma vez)</h2>
+  <ol>
+    <li><b>Importar</b> (mais rápido): GTM › contentor <b>Hôma | Global (GTM-MFRK69Z)</b> › Admin › <i>Importar contentor</i> › escolher o ficheiro em baixo › workspace atual › <b>Merge</b> › <i>Rename conflicting tags</i>. Cria a tag <i>FeedForge - tracking blocos</i> com disparo em <i>All Pages</i>.<br>
+      <span class="muted">Ou manualmente: Tags › New › Custom HTML › colar o código › Triggering: All Pages.</span></li>
+    <li><b>Confirmar que o GA4 recebe estes eventos.</b> Se o site já tem uma tag GA4 de ecommerce que dispara em <code>view_item_list</code> / <code>select_item</code> (com “Send Ecommerce data” a partir do dataLayer), não é preciso mais nada. Se não tiver: criar o trigger <i>Custom Event</i> com o nome <code>^(view_item_list|select_item)$</code> (usar regex) e uma tag <i>Google Analytics: GA4 Event</i> com Event Name <code>{{Event}}</code> e <i>More settings › Ecommerce › Send Ecommerce data › Data Layer</i>.</li>
+    <li><b>Testar</b> com o modo Preview do GTM numa página com um bloco: ao fazer scroll até ao bloco aparece <code>view_item_list</code>; ao clicar num produto, <code>select_item</code>. No GA4: <i>DebugView</i> e, depois, o relatório <i>Monetização › Ecommerce › Listas de itens</i>.</li>
+    <li><b>Publicar</b> o container.</li>
+  </ol>
+  <div class="note">Não é preciso mexer outra vez no GTM quando se criam novos módulos ou blocos: a tag encontra-os sozinha (também em páginas carregadas pela navegação da PWA).</div>
+
+  <h2>Ficheiros</h2>
+  <button class="btn pri" id="dl">Descarregar ficheiro para importar no GTM</button>
+  <button class="btn" id="cp">Copiar código da tag</button>
+  <a class="btn" href="/tracking/ff-tracking.js" target="_blank">Ver ff-tracking.js</a>
+  <span id="st" class="muted"></span>
+  <pre id="code">a carregar…</pre>
+</main>
+<script>
+(async () => {
+  const js = await fetch("/tracking/ff-tracking.js", { cache: "no-cache" }).then((r) => r.text());
+  const tagHtml = `<script>\n${js.trim()}\n<\/script>`;
+  document.getElementById("code").textContent = tagHtml;
+  const st = (t) => { const e = document.getElementById("st"); e.textContent = t; setTimeout(() => (e.textContent = ""), 2500); };
+  document.getElementById("cp").onclick = async () => { await navigator.clipboard.writeText(tagHtml); st("Código copiado"); };
+  // GTM container import (merge) into "Hôma | Global" (GTM-MFRK69Z): one Custom HTML tag on the built-in All Pages trigger (id 2147479553).
+  // The import needs the real account / container ids (with zeros GTM answers "Não encontrado").
+  const A = "6000400789", C = "30435178", fp = String(Date.now());
+  const container = {
+    exportFormatVersion: 2,
+    exportTime: new Date().toISOString().slice(0, 19).replace("T", " "),
+    containerVersion: {
+      path: `accounts/${A}/containers/${C}/versions/0`, accountId: A, containerId: C, containerVersionId: "0",
+      container: { path: `accounts/${A}/containers/${C}`, accountId: A, containerId: C, name: "Hôma | Global", publicId: "GTM-MFRK69Z", usageContext: ["WEB"], fingerprint: fp },
+      tag: [{
+        accountId: A, containerId: C, tagId: "9001",
+        name: "FeedForge - tracking blocos (Shop the Look / Page Builder)",
+        type: "html",
+        parameter: [
+          { type: "TEMPLATE", key: "html", value: tagHtml },
+          { type: "BOOLEAN", key: "supportDocumentWrite", value: "false" },
+        ],
+        fingerprint: fp,
+        firingTriggerId: ["2147479553"],
+        tagFiringOption: "ONCE_PER_LOAD",
+        monitoringMetadata: { type: "MAP" },
+        consentSettings: { consentStatus: "NOT_SET" },
+      }],
+      fingerprint: fp,
+    },
+  };
+  document.getElementById("dl").onclick = () => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(container, null, 2)], { type: "application/json" }));
+    a.download = "feedforge-gtm-tracking.json"; a.click();
+    st("Ficheiro descarregado");
+  };
+})();
+</script>
+</body>
+</html>

@@ -353,4 +353,18 @@ ${exHtml}
 assert.ok(fs.readFileSync(ET, "utf8").includes(exHtml), "export-test.html = current renderer output (UPDATE_SNAPSHOTS=1 to rewrite)");
 console.log("export-test OK");
 
+// tracking contract (FeedForge GTM tag): product lists carry data-ff-list-*, cards carry data-item-* incl. index and feed category
+{
+  const el = E.normalizeElement({ id: "pb-trk", name: "HP Natal", market: "pt", blocks: [
+    { id: "g1", type: "product-grid", props: { title: "Favoritos", productSource: { mode: "manual", ids: ["1", "2"] } } },
+    { id: "c1", type: "composition", props: { tree: { kind: "stack", children: [{ kind: "products", id: "pp", limit: 2, productSource: { mode: "manual", ids: ["1"] } }] } } },
+  ] });
+  const prod = (id) => ({ id, name: `Produto ${id}`, price: 9.5, url: `https://www.homastores.com/pt/pt/p-${id}.html`, image: `https://img.test/${id}.jpg`, path: ["Decoração", "Almofadas"] });
+  const { html } = E.renderElement(el, { products: { g1: [prod("1"), prod("2")], "c1:pp": [prod("1")] } });
+  assert.ok(html.includes('data-ff-list-id="pb_pb-trk_g1" data-ff-list-name="HP Natal - Favoritos"'), "grid list attributes");
+  assert.ok(html.includes('data-ff-list-id="pb_pb-trk_c1_pp"'), "products node list attributes");
+  assert.ok(html.includes('data-item-id="2" data-item-name="Produto 2" data-item-price="9.50" data-item-index="2" data-item-cat="Decoração &gt; Almofadas"'), "card tracking attributes");
+  console.log("Tracking OK");
+}
+
 console.log("\n✅ testes Page Builder passaram");
