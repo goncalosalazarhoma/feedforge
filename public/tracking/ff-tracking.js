@@ -5,7 +5,7 @@
      - produto: data-item-id, data-item-name, data-item-price, data-item-index, data-item-cat ("Decoração > Almofadas")
      - pin:     data-ff-pin (Shop the Look)
    Eventos no dataLayer, no formato GA4 que o site já usa no view_item:
-     view_item_list (quando a lista fica ≥ 50% visível, uma vez por lista e por página)
+     view_item_list (quando a lista fica ≥ 50% visível — ou ocupa ≥ 50% do ecrã, nos blocos altos —, uma vez por lista e por página)
      select_item    (clique num produto)
      stl_pin_select (pin do Shop the Look aberto; evento próprio, sem ecommerce)
    Seguro de carregar mais de uma vez; funciona com a navegação da PWA (blocos que aparecem depois). */
@@ -46,15 +46,18 @@
     dl({ event: event, ecommerce: { currency: CURRENCY, item_list_id: list.getAttribute("data-ff-list-id"), item_list_name: list.getAttribute("data-ff-list-name"), items: items } });
   }
 
-  // view_item_list: once per list element, when half of it is on screen
+  // view_item_list: once per list element, when half of it is on screen — or, for blocks taller than the
+  // screen (e.g. a 12-product grid), when it fills at least half of the viewport
   var io = "IntersectionObserver" in window ? new IntersectionObserver(function (entries) {
     entries.forEach(function (e) {
       if (!e.isIntersecting || e.target.__ffSeen) return;
+      var vh = (e.rootBounds && e.rootBounds.height) || window.innerHeight || 0;
+      if (e.intersectionRatio < 0.5 && !(vh && e.intersectionRect.height >= vh * 0.5)) return;
       e.target.__ffSeen = true; io.unobserve(e.target);
       var items = itemsOf(e.target);
       if (items.length) ecommerce("view_item_list", e.target, items);
     });
-  }, { threshold: 0.5 }) : null;
+  }, { threshold: [0, 0.1, 0.2, 0.3, 0.4, 0.5] }) : null;
   function scan(root) {
     var lists = (root || document).querySelectorAll ? (root || document).querySelectorAll("[data-ff-list-id]") : [];
     for (var i = 0; i < lists.length; i++) {
