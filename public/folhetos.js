@@ -348,7 +348,8 @@
 
   // ------------------------------------------------------------------ product list (pasted / uploaded SKUs) → pins
   const placedPages = (sku) => [...new Set(ST.f.hotspots.filter((h) => h.sku === sku).map((h) => h.page))].sort((a, b) => a - b);
-  const unplaced = () => (ST.f.skus || []).filter((x) => !ST.f.hotspots.some((h) => h.sku === x.sku)).map((x) => x.sku);
+  const unplaced = () => (ST.f.skus || []).filter((x) => !ST.f.hotspots.some((h) => h.sku === x.sku) && !isMissingSku(x.sku)).map((x) => x.sku);
+  const isMissingSku = (sku) => { const p = prod(sku); return !!(p && p.missing && !p.loading); };
   const poolPrice = (sku) => (ST.f.skus || []).find((x) => x.sku === sku)?.printedPrice ?? null;
   function nextUnplaced(after) {
     const u = unplaced().filter((s) => s !== after);
@@ -402,36 +403,55 @@
     }
     await PP.fetchIds(f.market, list.map((x) => x.sku)).catch((e) => toast(e.message, true));
     const miss = list.filter((x) => PP.cache[f.market][x.sku] === null && !ST.render?.products?.[x.sku]).length;
-    toast(`${added} SKU(s) adicionados${updated ? ` · ${updated} preço(s) atualizados` : ""}${miss ? ` · ${miss} não estão no feed` : ""}`, !added && !updated);
+    toast(`${added} SKU(s) carregados${updated ? ` · ${updated} preço(s) atualizados` : ""}${miss ? ` · ${miss} não encontrados` : ""}`, !added && !updated);
     drawEditor(main);
   }
 
+  const isMissing = (sku) => { const p = prod(sku); return !!(p && p.missing && !p.loading); };
+  const fold = (t) => String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   function tabLista(box, main) {
     const f = ST.f, list = f.skus || [], u = unplaced();
+    const missing = list.filter((x) => isMissing(x.sku));
     box.innerHTML = `
       <p class="small muted" style="margin-top:0">Cola os SKUs do folheto (um por linha, ou separados por vírgulas; opcional o preço impresso a seguir, ex. <code>473088;14,99</code>) ou carrega um CSV / Excel (1.ª coluna SKU, 2.ª preço impresso). Depois é só ir à página e colocar os pins.</p>
       <textarea id="sk-in" rows="4" style="width:100%;box-sizing:border-box;font-family:ui-monospace,Menlo,monospace;font-size:12px" placeholder="473088;14,99&#10;433902&#10;457953 9,99 €"></textarea>
       <div class="row" style="margin-top:6px"><button class="btn sm" id="sk-add">Adicionar à lista</button><label class="btn sm" style="cursor:pointer">Carregar ficheiro<input type="file" id="sk-file" accept=".csv,.txt,.xlsx,.xls" hidden></label>
         <span class="grow"></span>${list.length ? `<button class="btn sm ghost danger" id="sk-clear">Limpar</button>` : ""}</div>
-      ${list.length ? `<div class="row" style="margin:12px 0 8px"><b class="small">${list.length} produto(s) · ${list.length - u.length} colocado(s)</b><span class="grow"></span>${u.length && f.pageCount ? `<button class="btn sm primary" id="sk-place">${ST.arm ? "A colocar…" : `Colocar por ordem (${u.length})`}</button>` : ""}</div>
-        ${list.map((x, i) => { const p = prod(x.sku), pg = placedPages(x.sku), on = ST.arm === x.sku; return `<div class="fol-hs ${on ? "on" : ""}" style="cursor:default">${p && !p.missing && p.image ? `<img src="${esc(p.image)}" alt="">` : `<img alt="">`}
+      ${list.length ? `<div class="row" style="margin:12px 0 6px"><span class="grow"></span>${u.length && f.pageCount ? `<button class="btn sm primary" id="sk-place">${ST.arm ? "A colocar…" : `Colocar por ordem (${u.length})`}</button>` : ""}</div>
+        <input id="sk-q" type="search" placeholder="Pesquisar na lista (SKU ou nome)…" value="${esc(ST.skq || "")}" style="width:100%;box-sizing:border-box;margin-bottom:6px">
+        <div class="small" id="sk-sum" style="margin-bottom:8px"></div>
+        ${missing.length ? `<details class="small" style="margin:0 0 8px"><summary style="cursor:pointer">Ver os ${missing.length} não encontrados</summary><p class="mono" style="margin:6px 0;word-break:break-all">${missing.map((x) => esc(x.sku)).join(", ")}</p><button class="btn sm ghost danger" id="sk-rm-missing">Tirar os não encontrados da lista</button></details>` : ""}
+        <div id="sk-rows"></div>`
+      : `<p class="small muted" style="margin-top:12px">Ainda sem lista.</p>`}`;
+    // rows: products found in the feed / SFCC (the not found ones are only counted), filtered by the search
+    const drawRows = () => {
+      const q = fold(ST.skq).trim();
+      const found = list.map((x, i) => ({ x, i })).filter(({ x }) => !isMissing(x.sku));
+      const shown = q ? found.filter(({ x }) => fold(x.sku).includes(q) || fold(prod(x.sku)?.name).includes(q)) : found;
+      const placed = found.filter(({ x }) => placedPages(x.sku).length).length;
+      if ($("#sk-sum", box)) $("#sk-sum", box).innerHTML = `<b>${list.length}</b> carregados · <b>${shown.length}</b> visíveis · <b>${missing.length}</b> não encontrados <span class="muted">· ${placed} colocado(s)</span>`;
+      const rowsBox = $("#sk-rows", box); if (!rowsBox) return;
+      rowsBox.innerHTML = shown.map(({ x, i }) => { const p = prod(x.sku), pg = placedPages(x.sku), on = ST.arm === x.sku; return `<div class="fol-hs ${on ? "on" : ""}" style="cursor:default">${p && p.image ? `<img src="${esc(p.image)}" alt="">` : `<img alt="">`}
           <div style="min-width:0;flex:1"><div class="small" style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p?.name || x.sku)} <span class="muted mono">${esc(x.sku)}</span></div>
-            <div class="small">${p && !p.missing && !p.loading ? `${fmt(p.price)}${p.inStock === false ? ` <span class="badge flag">esgotado</span>` : ""}` : p?.loading ? `<span class="muted">a carregar…</span>` : `<span class="badge ex">não encontrado</span>`}
+            <div class="small">${p && !p.loading ? `${fmt(p.price)}${p.inStock === false ? ` <span class="badge flag">esgotado</span>` : ""}` : `<span class="muted">a carregar…</span>`}
               · impresso <input data-sk-price="${i}" type="number" min="0" step="0.01" value="${x.printedPrice ?? ""}" placeholder="—" style="width:72px;padding:2px 4px"> €</div></div>
           ${pg.length ? `<span class="badge new" title="Colocado">✓ pág. ${pg.join(", ")}</span>` : `<button class="btn sm" data-sk-arm="${esc(x.sku)}" ${f.pageCount ? "" : "disabled"}>${on ? "A colocar" : "Colocar"}</button>`}
-          <button class="btn sm ghost danger" data-sk-rm="${i}" title="Tirar da lista">✕</button></div>`; }).join("")}`
-      : `<p class="small muted" style="margin-top:12px">Ainda sem lista.</p>`}`;
+          <button class="btn sm ghost danger" data-sk-rm="${i}" title="Tirar da lista">✕</button></div>`; }).join("") || `<p class="small muted">${q ? "Nada encontrado na lista." : "Nenhum produto encontrado no feed / SFCC."}</p>`;
+      $$("[data-sk-arm]", rowsBox).forEach((b) => (b.onclick = () => { ST.arm = b.dataset.skArm; drawEditor(main); }));
+      $$("[data-sk-rm]", rowsBox).forEach((b) => (b.onclick = () => { const [x] = f.skus.splice(+b.dataset.skRm, 1); if (ST.arm === x.sku) ST.arm = null; changed(main, { stage: false }); drawEditor(main); }));
+      $$("[data-sk-price]", rowsBox).forEach((el) => (el.onchange = () => {
+        const x = f.skus[+el.dataset.skPrice]; x.printedPrice = toPrice(el.value);
+        for (const h of f.hotspots) if (h.sku === x.sku && h.printedPrice == null) h.printedPrice = x.printedPrice; // pins without their own printed price
+        changed(main, { stage: false });
+      }));
+    };
+    drawRows();
     $("#sk-add").onclick = (e) => guard(async () => { const l = parseText($("#sk-in").value); if (!l.length) return toast("Não encontrei SKUs no texto", true); await addSkus(l, main); }, e.target);
     $("#sk-file").onchange = (e) => guard(async () => { const file = e.target.files[0]; if (!file) return; const l = await parseFile(file); if (!l.length) return toast("Não encontrei SKUs no ficheiro (1.ª coluna)", true); await addSkus(l, main); });
+    if ($("#sk-q")) $("#sk-q").oninput = (e) => { ST.skq = e.target.value; drawRows(); };
     if ($("#sk-clear")) $("#sk-clear").onclick = async () => { if (await ask("Tirar todos os SKUs da lista? Os pins já colocados ficam.", { ok: "Limpar" })) { f.skus = []; ST.arm = null; changed(main, { stage: false }); drawEditor(main); } };
+    if ($("#sk-rm-missing")) $("#sk-rm-missing").onclick = () => { f.skus = f.skus.filter((x) => !isMissing(x.sku)); changed(main, { stage: false }); drawEditor(main); };
     if ($("#sk-place")) $("#sk-place").onclick = () => { ST.arm = ST.arm || u[0]; drawEditor(main); };
-    $$("[data-sk-arm]", box).forEach((b) => (b.onclick = () => { ST.arm = b.dataset.skArm; drawEditor(main); }));
-    $$("[data-sk-rm]", box).forEach((b) => (b.onclick = () => { const [x] = f.skus.splice(+b.dataset.skRm, 1); if (ST.arm === x.sku) ST.arm = null; changed(main, { stage: false }); drawEditor(main); }));
-    $$("[data-sk-price]", box).forEach((el) => (el.onchange = () => {
-      const x = f.skus[+el.dataset.skPrice]; x.printedPrice = toPrice(el.value);
-      for (const h of f.hotspots) if (h.sku === x.sku && h.printedPrice == null) h.printedPrice = x.printedPrice; // pins without their own printed price
-      changed(main, { stage: false });
-    }));
   }
 
   // ------------------------------------------------------------------ preview (same renderer as the export)
