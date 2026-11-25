@@ -14,6 +14,7 @@ import { registerStl } from "../lib/stl.mjs";
 import { registerProducts } from "../lib/products.mjs";
 import { registerPageBuilder } from "../lib/page-builder.mjs";
 import { registerLive } from "../lib/live.mjs";
+import { registerFolhetos } from "../lib/folhetos.mjs";
 
 const routes = [];
 const route = (method, pattern, handler) => {
@@ -25,6 +26,7 @@ registerProducts(route); // shared feed product search: /api/products*
 registerStl(route); // Shop the Look: /api/stl/*
 registerPageBuilder(route); // Page Builder: /api/page-builder/*
 registerLive(route); // live SFCC data for folhetos: /api/live/*, /api/sfcc/*
+registerFolhetos(route); // folheto editor: /api/folhetos/*
 
 // ---------------------------------------------------------------- meta
 route("GET", "/me", async () => ({
