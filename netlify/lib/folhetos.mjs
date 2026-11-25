@@ -21,6 +21,21 @@ const day = (s) => (/^\d{4}-\d{2}-\d{2}/.test(String(s || "")) ? String(s).slice
 export const ALLOWED_IMG = [/(^|\.)homastores\.com$/, /\.demandware\.net$/, /\.commercecloud\.salesforce\.com$/, /(^|\.)amazonaws\.com$/, /(^|\.)homa\.pt$/];
 export const imageHostOk = (url) => { try { const u = new URL(url.replace("{n}", "1")); return u.protocol === "https:" && ALLOWED_IMG.some((re) => re.test(u.hostname)); } catch { return false; } };
 
+// "…/natal/1.jpg" (URL of one page copied from the library) or "…/n.jpg" → "…/natal/{n}.jpg"
+export function normalizePattern(u) {
+  const s = String(u || "").trim();
+  if (!s || s.includes("{n}")) return s;
+  return s.replace(/\/(\d+|n)\.(jpe?g|png|webp)(?=$|[?#])/i, "/{n}.$2");
+}
+
+// a viewer page (Publitas, …) instead of the PDF itself: find the download link in its HTML
+export function findPdfLink(html, base) {
+  const s = String(html || "").replace(/&amp;/g, "&").replace(/\\\//g, "/");
+  const m = s.match(/(?:href|src|content|data-url)=["']([^"']+?\.pdf(?:\?[^"']*)?)["']/i) || s.match(/https?:\/\/[^"'\s<>\\]+?\.pdf(?:\?[^"'\s<>\\]*)?/i);
+  if (!m) return null;
+  try { return new URL(m[1] || m[0], base).href; } catch { return null; }
+}
+
 export function sanitizeFolheto(b = {}) {
   const market = LOCALES[b.market] ? b.market : "pt";
   const pageCount = Math.max(0, Math.min(80, Math.round(Number(b.pageCount) || (Array.isArray(b.pages) ? b.pages.length : 0))));
@@ -49,7 +64,7 @@ export function sanitizeFolheto(b = {}) {
     validFrom: day(b.validFrom),
     validTo: day(b.validTo),
     pdfUrl: /^https?:\/\//i.test(String(b.pdfUrl || "")) ? String(b.pdfUrl).trim().slice(0, 1000) : "",
-    imagePattern: /^https:\/\//i.test(String(b.imagePattern || "")) ? String(b.imagePattern).trim().slice(0, 500) : "",
+    imagePattern: /^https:\/\//i.test(String(b.imagePattern || "")) ? normalizePattern(b.imagePattern).slice(0, 500) : "",
     title: String(b.title ?? "").slice(0, 160),
     pageCount,
     pages,
@@ -162,17 +177,43 @@ async function withStatus(f) {
   };
 }
 
+// ---------------------------------------------------------------------------- PDF proxy
+async function openPdf(url, depth = 0) {
+  const res = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(25_000), headers: { "user-agent": "Mozilla/5.0 (FeedForge)" } });
+  if (!res.ok) throw httpError(502, `Não foi possível descarregar o PDF (${res.status})`);
+  const len = Number(res.headers.get("content-length") || 0);
+  if (len > 60 * 1024 * 1024) throw httpError(413, "PDF demasiado grande (máx. 60 MB)");
+  const reader = res.body.getReader();
+  const chunks = [];
+  let got = 0;
+  while (got < 1024) { const { done, value } = await reader.read(); if (done) break; chunks.push(value); got += value.length; }
+  const head = Buffer.concat(chunks);
+  if (head.subarray(0, 1024).toString("latin1").includes("%PDF-")) {
+    const stream = new ReadableStream({
+      start(c) { c.enqueue(head); },
+      async pull(c) { const { done, value } = await reader.read(); if (done) c.close(); else c.enqueue(value); },
+      cancel(r) { reader.cancel(r); },
+    });
+    return { stream, finalUrl: res.url || url };
+  }
+  // not a PDF: read the page (max 3 MB) and look for the download link once
+  const parts = [head];
+  for (let n = head.length; n < 3 * 1024 * 1024;) { const { done, value } = await reader.read(); if (done) break; parts.push(value); n += value.length; }
+  reader.cancel().catch(() => {});
+  const link = depth === 0 ? findPdfLink(Buffer.concat(parts).toString("utf8"), res.url || url) : null;
+  if (link) return openPdf(link, 1);
+  throw httpError(415, "Esse URL não é um PDF (é uma página). Usa o link direto do ficheiro, por exemplo “Baixar PDF” no catálogo.");
+}
+
 // ---------------------------------------------------------------------------- routes (/api/folhetos*)
 export function registerFolhetos(route) {
-  // PDF proxy for the editor (the flyer host rarely allows cross-origin reads); streamed, PDFs only
+  // PDF proxy for the editor (the flyer host rarely allows cross-origin reads); streamed, PDFs only.
+  // A viewer page (e.g. catalogo.homa.pt / Publitas) is accepted too: the PDF download link is taken from it.
   route("GET", "/folhetos/pdf", async ({ query }) => {
     const url = String(query.get("url") || "");
     if (!/^https?:\/\//i.test(url)) throw httpError(400, "URL do PDF inválido");
-    const res = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(25_000) });
-    if (!res.ok) throw httpError(502, `Não foi possível descarregar o PDF (${res.status})`);
-    const len = Number(res.headers.get("content-length") || 0);
-    if (len > 60 * 1024 * 1024) throw httpError(413, "PDF demasiado grande (máx. 60 MB)");
-    return new Response(res.body, { status: 200, headers: { "content-type": "application/pdf", "cache-control": "private, max-age=600" } });
+    const { stream, finalUrl } = await openPdf(url);
+    return new Response(stream, { status: 200, headers: { "content-type": "application/pdf", "cache-control": "private, max-age=600", "x-pdf-url": encodeURI(decodeURI(finalUrl)) } });
   });
 
   route("GET", "/folhetos", async () => {
