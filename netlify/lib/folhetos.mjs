@@ -36,12 +36,23 @@ export function findPdfLink(html, base) {
   try { return new URL(m[1] || m[0], base).href; } catch { return null; }
 }
 
+const money = (v) => (v === "" || v === null || v === undefined || !Number.isFinite(Number(v)) ? null : Math.round(Number(v) * 100) / 100);
+
+// the flyer's product list (pasted / uploaded SKUs), placed on the pages later as "+" / areas
+export function sanitizeSkus(list) {
+  const seen = new Set();
+  return (Array.isArray(list) ? list : []).map((x) => (typeof x === "string" ? { sku: x } : x || {}))
+    .map((x) => ({ sku: String(x.sku || "").trim().slice(0, 40), printedPrice: money(x.printedPrice) }))
+    .filter((x) => x.sku && !seen.has(x.sku) && seen.add(x.sku)).slice(0, 500);
+}
+
 export function sanitizeFolheto(b = {}) {
   const market = LOCALES[b.market] ? b.market : "pt";
   const pageCount = Math.max(0, Math.min(80, Math.round(Number(b.pageCount) || (Array.isArray(b.pages) ? b.pages.length : 0))));
   const pages = Array.from({ length: pageCount }, (_, i) => {
     const r = Number(b.pages?.[i]?.ratio);
-    return { ratio: Number.isFinite(r) && r > 0.2 && r < 5 ? Math.round(r * 10000) / 10000 : 0.7071 };
+    const section = String(b.pages?.[i]?.section ?? "").trim().slice(0, 60);
+    return { ratio: Number.isFinite(r) && r > 0.2 && r < 5 ? Math.round(r * 10000) / 10000 : 0.7071, ...(section ? { section } : {}) };
   });
   let n = 0;
   const hotspots = (Array.isArray(b.hotspots) ? b.hotspots : []).filter((h) => h && Number(h.page) >= 1 && Number(h.page) <= Math.max(1, pageCount)).slice(0, 400).map((h) => {
@@ -69,6 +80,7 @@ export function sanitizeFolheto(b = {}) {
     pageCount,
     pages,
     hotspots,
+    skus: sanitizeSkus(b.skus),
   };
 }
 
@@ -91,7 +103,10 @@ async function uniqueId(name) {
 export async function syncLiveSet(f, { refresh = true, fetchFn } = {}) {
   const sid = liveSetId(f.id);
   const seen = new Set();
-  const items = f.hotspots.filter((h) => h.sku && !seen.has(h.sku) && seen.add(h.sku)).map((h) => ({ id: h.sku, printedPrice: h.printedPrice }));
+  // placed products first, then the rest of the product list (alerts before the pins are placed)
+  const pool = new Map((f.skus || []).map((x) => [x.sku, x.printedPrice]));
+  const items = [...f.hotspots.filter((h) => h.sku).map((h) => ({ id: h.sku, printedPrice: h.printedPrice ?? pool.get(h.sku) ?? null })), ...(f.skus || []).map((x) => ({ id: x.sku, printedPrice: x.printedPrice }))]
+    .filter((it) => !seen.has(it.id) && seen.add(it.id));
   const set = { id: sid, name: f.name, kind: "folheto", markets: [f.market], items, validFrom: f.validFrom, validTo: f.validTo, updatedAt: new Date().toISOString() };
   await db.set(LK.set(sid), set);
   const ids = (await db.get(LK.sets())) || [];
@@ -107,6 +122,7 @@ async function dropLiveSet(id) {
   await db.set(LK.sets(), ((await db.get(LK.sets())) || []).filter((x) => x !== sid));
 }
 
+export const LOW_STOCK = 5; // live stock at or below this shows "Últimas unidades"
 const searchUrl = (market, sku) => `https://www.homastores.com/${market === "es" ? "es/es" : "pt/pt"}/search?q=${encodeURIComponent(sku)}`;
 
 // renderer config: folheto + product data per SKU (live SFCC first, then the feed)
@@ -127,13 +143,14 @@ export function hydrateFolheto(f, catalog, live) {
       image: l?.image || feed?.image || "",
       url: feed?.link || searchUrl(f.market, sku),
       inStock: l ? l.inStock : feed.inStock,
+      low: !!(l && l.inStock && Number.isFinite(l.stock) && l.stock > 0 && l.stock <= LOW_STOCK), // "Últimas unidades"
       path: feed?.path || [],
       source: l ? "sfcc" : "feed",
     };
   }
   return {
     id: f.id, name: f.name, title: f.title, market: f.market, locale: LOCALES[f.market], currency: "EUR",
-    pages: f.pages.map((p, i) => ({ n: i + 1, ratio: p.ratio, src: f.imagePattern ? f.imagePattern.replaceAll("{n}", String(i + 1)) : "" })),
+    pages: f.pages.map((p, i) => ({ n: i + 1, ratio: p.ratio, section: p.section || "", src: f.imagePattern ? f.imagePattern.replaceAll("{n}", String(i + 1)) : "" })),
     hotspots: f.hotspots,
     products,
     validFrom: f.validFrom, validTo: f.validTo,
@@ -143,7 +160,7 @@ export function hydrateFolheto(f, catalog, live) {
 
 // what the exported HTML depends on: if this changes, the code on the site is out of date
 export function fingerprint(cfg) {
-  const data = { p: cfg.pages.map((p) => [p.src, p.ratio]), h: cfg.hotspots.map((h) => [h.page, h.type, h.x, h.y, h.w, h.h, h.sku]), d: Object.values(cfg.products).sort((a, b) => a.id.localeCompare(b.id)).map((p) => [p.id, p.name, p.price, p.listPrice, p.inStock, p.url, p.image, !!p.missing]), t: cfg.title };
+  const data = { p: cfg.pages.map((p) => [p.src, p.ratio, p.section || ""]), v: [cfg.validFrom, cfg.validTo], h: cfg.hotspots.map((h) => [h.page, h.type, h.x, h.y, h.w, h.h, h.sku]), d: Object.values(cfg.products).sort((a, b) => a.id.localeCompare(b.id)).map((p) => [p.id, p.name, p.price, p.listPrice, p.inStock, !!p.low, p.url, p.image, !!p.missing]), t: cfg.title };
   return crypto.createHash("sha256").update(JSON.stringify(data)).digest("hex").slice(0, 16);
 }
 
