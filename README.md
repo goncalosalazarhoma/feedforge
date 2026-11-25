@@ -227,6 +227,17 @@ Para os produtos dos folhetos ativos, o FeedForge vai buscar ao SFCC, de 2 em 2 
   - `GET /api/live/sets/<slug>`
   - `POST /api/live/refresh` `{ id? }`: o botão "Atualizar agora".
 
+## Folhetos (editor)
+O folheto promocional em PDF como bloco do site: páginas lado a lado com scroll horizontal (2 no desktop, 1 no mobile) e produtos clicáveis. Menu **Folhetos**.
+
+1. **Folheto:** nome, mercado, validade e o **URL do PDF** → "Carregar". As páginas são convertidas em imagens no browser (pdf.js). Se o servidor do PDF não permitir leitura direta, o FeedForge descarrega-o (`GET /api/folhetos/pdf?url=`).
+2. **Imagens no site:** o site só aceita imagens de domínios autorizados (política de segurança: homastores.com, demandware.net, …), por isso descarrega o .zip com as páginas (`1.jpg`, `2.jpg`…), carrega-as numa pasta da biblioteca do SFCC e cola o URL de uma delas trocando o número por `{n}`.
+3. **Produtos:** modo *Ponto + cartão* (clica na página) ou *Área clicável* (arrasta). Escolhe o produto na pesquisa ou escreve o SKU; o preço impresso é opcional e serve para o alerta de preço.
+4. **Guardar** cria/atualiza a lista de SKUs do folheto (`fol-<id>` em "Dados ao vivo do SFCC") a partir dos hotspots e faz logo o pull. O separador **Dados SFCC** mostra a última e a próxima atualização, os alertas e o botão "Atualizar agora".
+5. **Exportar:** gera HTML + CSS para um componente **Raw HTML** do Page Designer (sem JavaScript; tracking pela tag FeedForge no GTM, `item_list_name` "Folheto - nome"). Como o bloco não se atualiza sozinho, o editor guarda a "impressão digital" dos dados exportados e avisa quando o preço, o stock ou os produtos mudaram: aí é gerar e colar de novo.
+
+Hotspots sem produto ou com SKU não encontrado não são exportados. Ficheiros: `netlify/lib/folhetos.mjs` (API `/api/folhetos*`), `public/folhetos.js` (editor), `public/folhetos/render.mjs` + `folheto.css` (bloco), `test/folhetos.test.mjs`.
+
 ## Feed em XML
 Além do Sheets (CSV), cada feed tem links XML públicos (Dashboard → Links XML), gerados a partir do output do último run:
 `/xml/<feed>/<token>/meta.xml` e `/xml/<feed>/<token>/gmc.xml` (acrescenta `.gz` para a versão comprimida).

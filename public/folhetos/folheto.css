@@ -1,0 +1,73 @@
+/* hôma · Folheto (Raw HTML, sem JavaScript). Markup: public/folhetos/render.mjs. Gilroy vem do site.
+   Páginas lado a lado (2 no desktop, 1 no mobile) com scroll horizontal + scroll-snap; hotspots = ponto + cartão
+   (Figma "Interactive Dots V2") ou área clicável. */
+.hfol{--hfol-text:#181818;--hfol-secondary:#444;--hfol-danger:#8e030f;--hfol-gap:8px;--hfol-dsc-w:320px;--hfol-pin-r:22px;
+  font-family:Gilroy,"Helvetica Neue",Arial,sans-serif;color:var(--hfol-text);width:100%;box-sizing:border-box;padding:0 0 8px}
+.hfol *,.hfol *::before,.hfol *::after{box-sizing:border-box}
+.hfol__title{margin:0 0 16px;padding:0 40px;font-weight:500;font-size:34px;line-height:52px;letter-spacing:-.02em}
+.hfol__track{display:flex;gap:var(--hfol-gap);overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scroll-behavior:smooth;padding:0 40px 14px;scroll-padding:0 40px;
+  scrollbar-width:thin;scrollbar-color:#aeaeae transparent;overscroll-behavior-x:contain}
+.hfol__track::-webkit-scrollbar{height:6px}.hfol__track::-webkit-scrollbar-thumb{background:#aeaeae;border-radius:4px}
+.hfol__page{position:relative;margin:0;flex:0 0 calc((100% - var(--hfol-gap)) / 2);scroll-snap-align:start;background:#f3f1ea;container-type:inline-size;aspect-ratio:.7071}
+.hfol__img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.hfol__noimg{position:absolute;inset:0;display:grid;place-items:center;color:#757575;font-size:14px}
+.hfol__num{position:absolute;right:8px;bottom:8px;z-index:1;font-size:12px;line-height:18px;padding:0 8px;background:rgba(255,255,255,.8);color:var(--hfol-text);pointer-events:none}
+.hfol__hint{margin:4px 40px 0;font-size:12px;line-height:18px;color:#757575}
+
+/* ponto (área de 44 px; inativo = ponto branco de 16 px; ativo = 12 px a 80%) */
+.hfol__pw{position:absolute;z-index:2;width:0;height:0}
+.hfol__pw:hover,.hfol__pw:focus-within{z-index:5}
+.hfol__pin{position:absolute;left:-22px;top:-22px;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;cursor:pointer;outline:0;transition:opacity .15s}
+.hfol__pin::after{content:"";width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 0 8px rgba(24,24,24,.2);transition:width .15s,height .15s,box-shadow .15s}
+.hfol__pw:hover .hfol__pin,.hfol__pw:focus-within .hfol__pin{opacity:.8}
+.hfol__pw:hover .hfol__pin::after,.hfol__pw:focus-within .hfol__pin::after{width:12px;height:12px;box-shadow:0 0 12px rgba(24,24,24,.32)}
+.hfol__pin:focus-visible{outline:2px solid #fff;outline-offset:-2px}
+
+/* cartão (Shop the Look Cards) por baixo do ponto, alinhado com o lado do ponto, a 12 px das margens da página */
+.hfol__pop{position:absolute;z-index:3;width:var(--hfol-dsc-w);max-width:calc(100cqw - 24px);top:calc(var(--hfol-pin-r) + 4px);
+  left:calc(clamp(12px, var(--x,50) * 1cqw - var(--hfol-pin-r), 100cqw - var(--hfol-dsc-w) - 12px) - var(--x,50) * 1cqw);
+  opacity:0;visibility:hidden;transform:translateY(4px);transition:opacity .18s,transform .18s,visibility .18s;pointer-events:none}
+.hfol__pw--l .hfol__pop{left:calc(clamp(12px, var(--x,50) * 1cqw + var(--hfol-pin-r) - var(--hfol-dsc-w), 100cqw - var(--hfol-dsc-w) - 12px) - var(--x,50) * 1cqw)}
+.hfol__pw--b .hfol__pop{top:auto;bottom:calc(var(--hfol-pin-r) + 4px)}
+.hfol__pop::before{content:"";position:absolute;left:0;right:0;top:-8px;height:8px}
+.hfol__pw--b .hfol__pop::before{top:auto;bottom:-8px}
+.hfol__pw:hover .hfol__pop,.hfol__pw:focus-within .hfol__pop{opacity:1;visibility:visible;transform:none;pointer-events:auto}
+.hfol__card{display:flex;gap:12px;align-items:center;padding:8px 12px;background:#fff;color:var(--hfol-text);text-decoration:none}
+.hfol__card-img{flex:0 0 68px;height:91px;background:#f8f6f4;overflow:hidden}
+.hfol__card-img img{width:100%;height:100%;object-fit:cover;display:block}
+.hfol__card-txt{display:flex;flex-direction:column;justify-content:center;gap:4px;flex:1 1 0;min-width:0}
+.hfol__card-name{font-weight:500;font-size:16px;line-height:28px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hfol__price{display:flex;gap:4px;align-items:center;white-space:nowrap}
+.hfol__price b{font-weight:500;font-size:14px;line-height:24px}
+.hfol__price s{font-size:14px;line-height:20px;color:var(--hfol-secondary)}
+.hfol__oos{font-size:12px;line-height:18px;color:var(--hfol-danger)}
+.hfol__card.is-oos .hfol__card-img{opacity:.6}
+
+/* área clicável: contorno ao passar, etiqueta com nome e preço */
+.hfol__area{position:absolute;z-index:1;display:block;outline:0;border:2px solid transparent;transition:border-color .15s,background .15s;text-decoration:none;color:var(--hfol-text)}
+.hfol__area:hover,.hfol__area:focus-visible{border-color:#fff;background:rgba(255,255,255,.12);box-shadow:0 0 0 1px rgba(24,24,24,.25)}
+.hfol__tip{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);max-width:calc(100% - 16px);display:flex;flex-direction:column;gap:0;padding:6px 10px;background:#fff;
+  opacity:0;visibility:hidden;transition:opacity .15s,visibility .15s;pointer-events:none;box-shadow:0 0 8px rgba(24,24,24,.2)}
+.hfol__area:hover .hfol__tip,.hfol__area:focus-visible .hfol__tip{opacity:1;visibility:visible}
+.hfol__tip-name{font-weight:500;font-size:13px;line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hfol__tip .hfol__price b{font-size:13px;line-height:18px}.hfol__tip .hfol__price s{font-size:12px;line-height:18px}
+
+/* só na pré-visualização: hotspot sem produto */
+.hfol__miss .hfol__pin::after{background:#d33}
+.hfol__area.hfol__miss{border:2px dashed #d33}
+
+@media (max-width:767px){
+  .hfol{--hfol-dsc-w:220px}
+  .hfol__title{padding:0 16px;font-size:22px;line-height:32px}
+  .hfol__track{padding:0 16px 12px;scroll-padding:0 16px}
+  .hfol__page{flex-basis:100%}
+  .hfol__hint{margin:4px 16px 0}
+  .hfol__card{gap:8px;padding:8px;align-items:flex-start}
+  .hfol__card-img{flex-basis:60px;height:80px}
+  .hfol__card-txt{justify-content:flex-start}
+  .hfol__card-name{font-size:12px;line-height:18px}
+  .hfol__price{flex-wrap:wrap;gap:0 8px}
+  .hfol__price b,.hfol__price s{font-size:12px;line-height:18px}
+  .hfol__area .hfol__tip{opacity:1;visibility:visible;bottom:4px;padding:4px 8px} /* sem hover no telemóvel: etiqueta sempre visível */
+}
+@media (prefers-reduced-motion:reduce){.hfol__track{scroll-behavior:auto}}
