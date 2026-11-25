@@ -13,6 +13,7 @@ import { json, authorized, triggerRun } from "../lib/http.mjs";
 import { registerStl } from "../lib/stl.mjs";
 import { registerProducts } from "../lib/products.mjs";
 import { registerPageBuilder } from "../lib/page-builder.mjs";
+import { registerLive } from "../lib/live.mjs";
 
 const routes = [];
 const route = (method, pattern, handler) => {
@@ -23,6 +24,7 @@ const route = (method, pattern, handler) => {
 registerProducts(route); // shared feed product search: /api/products*
 registerStl(route); // Shop the Look: /api/stl/*
 registerPageBuilder(route); // Page Builder: /api/page-builder/*
+registerLive(route); // live SFCC data for folhetos: /api/live/*, /api/sfcc/*
 
 // ---------------------------------------------------------------- meta
 route("GET", "/me", async () => ({

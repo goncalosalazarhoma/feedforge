@@ -208,6 +208,25 @@ Os blocos vão para o site como Raw HTML (sem JavaScript), por isso o tracking �
 - Listas: `Shop the Look - <nome do módulo>` (`stl_<id>`) e `<nome do elemento> - <título do bloco>` (`pb_<elemento>_<bloco>`).
 - Falta confirmar no GTM que a tag GA4 de ecommerce do site dispara em `view_item_list` / `select_item` (instruções na página).
 
+## Dados ao vivo do SFCC (folhetos)
+Para os produtos dos folhetos ativos, o FeedForge vai buscar ao SFCC, de 2 em 2 horas, o preço, as promoções e o stock de cada site (Homa_PT, Homa_ES), os mesmos dados que um visitante vê. Isto usa a API Shopper Products (SCAPI) com um token de convidado (SLAS), só de leitura e sem IA. Não usa o Akeneo, que não tem stock nem preço promocional.
+
+- **Variáveis no Netlify:**
+  - `SFCC_CLIENT_ID` (obrigatória): hoje, o cliente público da PWA de produção (`d649bc7c-…`). O login de convidado é feito com PKCE e o URL de retorno `https://www.homastores.com/callback`.
+  - `SFCC_CLIENT_SECRET`: quando a agência criar um cliente privado dedicado, basta pôr o client ID e o secret dele e o login passa a `client_credentials`.
+  - `SFCC_SHORT_CODE` (`5gapigs5`), `SFCC_ORG_ID` (`f_ecom_bfdh_prd`), `SFCC_REDIRECT_URI` e `SFCC_SITES` (`{"pt":"Homa_PT","es":"Homa_ES"}`): só é preciso mudar se forem diferentes destes valores.
+- **Listas de SKUs:** o editor de folhetos grava a lista de cada folheto com `PUT /api/live/sets/<slug>`, enviando `{ name, markets:["pt","es"], validFrom, validTo, items:[{ id, printedPrice }] }`. Cada gravação faz logo o pull desses SKUs.
+- **Função agendada:** `netlify/functions/live-refresh.mjs` (cron `0 */2 * * *`). Só trata as listas dentro da validade e faz um pedido por cada 24 SKUs e mercado.
+- **Alertas:** produto não encontrado ou offline, esgotado, e preço no site diferente do impresso. Ficam em `live/data/<slug>`. Os alertas que não existiam na execução anterior ficam em `newAlerts`; vão para o relatório do Filo quando esse envio estiver no `main` (branch `feat/filo-run-report`).
+- **Prioridade sobre o feed:** a pesquisa de produtos (Shop the Look, Page Builder) usa o preço e o stock ao vivo para os SKUs dos folhetos ativos.
+- **API:**
+  - `GET /api/sfcc/status`
+  - `POST /api/sfcc/test` `{ ids, market }`: teste rápido, não grava nada.
+  - `GET /api/live/state`: última e próxima execução.
+  - `GET /api/live/sets`
+  - `GET /api/live/sets/<slug>`
+  - `POST /api/live/refresh` `{ id? }`: o botão "Atualizar agora".
+
 ## Feed em XML
 Além do Sheets (CSV), cada feed tem links XML públicos (Dashboard → Links XML), gerados a partir do output do último run:
 `/xml/<feed>/<token>/meta.xml` e `/xml/<feed>/<token>/gmc.xml` (acrescenta `.gz` para a versão comprimida).
