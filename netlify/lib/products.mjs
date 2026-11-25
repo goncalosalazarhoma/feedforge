@@ -2,6 +2,7 @@
 // Used by Shop the Look and Page Builder: /api/products, /api/products/categories, /api/products/resolve.
 import { db, K, listFeeds, httpError } from "./store.mjs";
 import { parsePrice } from "./util.mjs";
+import { LK, overlayItem } from "./live.mjs";
 
 export const PK = {
   catalog: (m) => `stl/catalog/${m}`, // compact product list built from the feed output (key kept from Shop the Look)
@@ -68,6 +69,9 @@ export async function getCatalog(market, { force = false } = {}) {
     catalog = { v: CATALOG_V, feedId: cfg.id, market, generatedAt: out.generatedAt, items: out.meta.rows.map((r) => toCatalogItem(r, seen.get(String(r.id)))).filter((p) => p.id) };
     await db.set(PK.catalog(market), catalog);
   }
+  // products of active folhetos: live SFCC price / stock (refreshed every 2 h) wins over the daily feed
+  const overlay = await db.get(LK.overlay(market));
+  if (overlay?.items && Object.keys(overlay.items).length) catalog = { ...catalog, liveAt: overlay.fetchedAt, items: catalog.items.map((p) => overlayItem(p, overlay.items[p.id])) };
   mem.set(market, { at: Date.now(), catalog });
   return catalog;
 }
