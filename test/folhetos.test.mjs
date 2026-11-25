@@ -95,6 +95,16 @@ assert.ok(!body.includes("hfol__miss"));
 const pv = renderFolheto(cfgR, { css, preview: true, imageFor: (n) => `data:image/jpeg;base64,${n}` });
 assert.equal((noCss(pv).match(/hfol__miss/g) || []).length, 2, "preview marks the hotspots without a product");
 assert.ok(pv.includes('src="data:image/jpeg;base64,1"'));
+// uploaded list: unpinned products are listed (grid + mobile "whole flyer"), only when found and in stock
+{
+  const cfgL = { ...cfgR, list: ["473088", "474166", "777", "888", "999"], products: { ...cfgR.products, "777": { id: "777", name: "Vela extra", price: 3, inStock: true, url: "https://x/777", path: ["Natal", "Velas"] }, "888": { id: "888", name: "Esgotado extra", price: 3, inStock: false, url: "https://x/888" } } };
+  const b2 = noCss(renderFolheto(cfgL, { css }));
+  assert.ok(b2.includes('data-item-id="777"'), "unpinned, found, in stock → listed");
+  assert.ok(!b2.includes('data-item-id="888"'), "unpinned and out of stock → not listed");
+  assert.ok(b2.includes("· 4 produtos"), "header counts the listed products");
+  assert.ok(!b2.includes('id="hfol-natal-p4"'), "no '+' / detail radio for an unpinned product");
+  assert.match(b2, /data-item-id="777"[^>]*data-item-index="4"/, "GA4 index continues after the pinned products");
+}
 delete live.markets.pt["473088"].stock;
 console.log("Render OK");
 
@@ -126,7 +136,8 @@ assert.deepEqual(set.items.map((i) => i.id), ["474166"], "removed hotspot → SK
   assert.equal(r2.json.folheto.skus.length, 2);
   const s2 = await db.get(L.LK.set(F.liveSetId(id)));
   assert.deepEqual(s2.items, [{ id: "474166", printedPrice: 19 }, { id: "473088", printedPrice: 18 }]);
-  assert.equal(r2.json.render.products["473088"], undefined, "unplaced SKUs are not in the block (nor in the export fingerprint)");
+  assert.equal(r2.json.render.products["473088"].id, "473088", "unpinned list products are hydrated too (listed in the block)");
+  assert.deepEqual(r2.json.render.list, ["474166", "473088"]);
   r = await call("PUT", `/folhetos/${id}`, { ...r2.json.folheto, skus: [] });
 }
 assert.equal(r.json.status.outdated, false, "never exported");

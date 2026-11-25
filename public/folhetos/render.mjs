@@ -65,7 +65,10 @@ export function renderFolheto(cfg, { css = "", preview = false, imageFor = null 
     (pagesOfSku[h.sku] ||= []).includes(h.page) || pagesOfSku[h.sku].push(h.page);
     onPage[h.page].includes(h.sku) || onPage[h.page].push(h.sku);
   }
-  const ix = (sku) => order.indexOf(sku) + 1;
+  // uploaded list: products without a pin are listed too (below and in the mobile "whole flyer" sheet) when found and in stock
+  const extra = (cfg.list || []).filter((sku, i, a) => a.indexOf(sku) === i && ok(sku) && !order.includes(sku) && products[sku].inStock !== false);
+  const all = [...order, ...extra];
+  const ix = (sku) => all.indexOf(sku) + 1;
   const pr = (sku) => `${P}-p${ix(sku)}`; // product radio id
   const spreads = spreadsOf(N);
   const spreadOfPage = {};
@@ -78,7 +81,7 @@ export function renderFolheto(cfg, { css = "", preview = false, imageFor = null 
     const s = (pg && pages[pg - 1]?.section) || (products[sku].path || [])[1] || (products[sku].path || [])[0] || "";
     return String(s).trim();
   };
-  const sections = [...new Set(order.map(secOf).filter(Boolean))];
+  const sections = [...new Set(all.map(secOf).filter(Boolean))];
   const secIx = (sku) => sections.indexOf(secOf(sku)) + 1;
 
   const track = (p) => {
@@ -179,7 +182,7 @@ export function renderFolheto(cfg, { css = "", preview = false, imageFor = null 
   }).join("");
   const sheetHtml = pagesWith.length ? `<div class="hfol__sheet" role="dialog" aria-label="${esc(L.allTitle)}"><div class="hfol__sheet-head"><label class="hfol__x" for="${P}-mn" aria-label="${esc(L.close)}"></label><div>${pagesWith.map((n) => `<span class="hfol__st hfol__st--${n}">${esc(L.ofPage(n))}</span>`).join("")}<span class="hfol__muted">${esc(cfg.title || cfg.name || "")}</span></div></div>`
     + `<div class="hfol__tabs"><label class="hfol__tab hfol__tab--p" for="${P}-tp">${esc(L.thisPage)}</label><label class="hfol__tab hfol__tab--a" for="${P}-ta">${esc(L.whole)}</label></div>`
-    + `<div class="hfol__sheet-body">${sheetLists}<div class="hfol__sall">${order.map(srow).join("")}</div></div></div>` : "";
+    + `<div class="hfol__sheet-body">${sheetLists}<div class="hfol__sall">${all.map(srow).join("")}</div></div></div>` : "";
 
   // ------------------------------------------------------------------ all products (grid + section filter)
   const chips = sections.length > 1 ? `<div class="hfol__chips"><label class="hfol__chip hfol__chip--0" for="${P}-f0">${esc(L.all)}</label>${sections.map((s, k) => `<label class="hfol__chip hfol__chip--${k + 1}" for="${P}-f${k + 1}">${esc(s)}</label>`).join("")}</div>` : "";
@@ -190,28 +193,28 @@ export function renderFolheto(cfg, { css = "", preview = false, imageFor = null 
       rules.push(`${R}:has(#${P}-f${k + 1}:checked) .hfol__card:not(.hfol__sec--${k + 1}){display:none}`);
     });
   }
-  const cards = order.map((sku) => {
+  const cards = all.map((sku) => {
     const p = products[sku];
     return `<a class="hfol__card hfol__sec--${secIx(sku)}${p.inStock === false ? " is-oos" : ""}" href="${esc(p.url)}"${track(p)}><span class="hfol__card-img">${img(p.image)}</span>`
-      + `<span class="hfol__muted">${esc(L.page)} ${(pagesOfSku[sku] || []).join(", ")}</span><span class="hfol__card-name">${esc(p.name)}</span>${price(p)}${p.inStock === false || p.low ? stockHtml(p) : ""}</a>`;
+      + `${pagesOfSku[sku] ? `<span class="hfol__muted">${esc(L.page)} ${pagesOfSku[sku].join(", ")}</span>` : ""}<span class="hfol__card-name">${esc(p.name)}</span>${price(p)}${p.inStock === false || p.low ? stockHtml(p) : ""}</a>`;
   }).join("");
 
   // ------------------------------------------------------------------ header
   const from = dmy(cfg.validFrom), to = dmy(cfg.validTo);
-  const sub = [from && to ? L.valid(from, to) : to ? L.validTo(to) : "", `${N} ${L.pages}`, `${order.length} ${order.length === 1 ? L.product : L.products}`].filter(Boolean).join(" · ");
+  const sub = [from && to ? L.valid(from, to) : to ? L.validTo(to) : "", `${N} ${L.pages}`, `${all.length} ${all.length === 1 ? L.product : L.products}`].filter(Boolean).join(" · ");
 
   const media = (q, list) => (list.length ? `\n@media ${q}{\n${list.join("\n")}\n}` : "");
   return `<div class="hfol" id="${P}" data-fol-id="${esc(cfg.id || id)}" data-ff-list-id="${esc(listIdOf(cfg))}" data-ff-list-name="${esc(listNameOf(cfg))}" aria-label="${esc(L.list)}">`
     + `<style>${css.trim()}${rules.length ? "\n" + rules.join("\n") : ""}${media("(min-width:768px)", desk)}${media("(max-width:767px)", mob)}</style>`
     + radios
     + `<div class="hfol__head"><div>${cfg.title ? `<h2 class="hfol__title">${esc(cfg.title)}</h2>` : ""}<p class="hfol__sub">${esc(sub)}</p></div>`
-    + `<div class="hfol__actions">${spreads.length > 1 ? `<label class="hfol__btn hfol__btn--ix" for="${P}-ix">${esc(L.index)}</label>` : ""}${order.length ? `<a class="hfol__btn" href="#${P}-todos">${esc(L.seeAll)}</a>` : ""}</div></div>`
+    + `<div class="hfol__actions">${spreads.length > 1 ? `<label class="hfol__btn hfol__btn--ix" for="${P}-ix">${esc(L.index)}</label>` : ""}${all.length ? `<a class="hfol__btn" href="#${P}-todos">${esc(L.seeAll)}</a>` : ""}</div></div>`
     + `<div class="hfol__main"><section class="hfol__viewer" aria-label="${esc(L.list)}"><div class="hfol__stage">${spreads.length > 1 ? navHtml : ""}<div class="hfol__track">${spreadHtml}</div></div>`
     + `${N > 1 ? `<p class="hfol__hint">${esc(L.swipe)} →</p>` : ""}`
     + `${spreads.length > 1 ? `<div class="hfol__bar"><div class="hfol__thumbs">${thumbsHtml}</div>${countHtml}</div>` : ""}</section>`
     + (order.length ? `<label class="hfol__backdrop" for="${P}-pn" aria-hidden="true"></label>` : "")
     + `<aside class="hfol__aside" aria-label="${esc(L.inThese)}">${listsHtml}${detailsHtml}</aside></div>`
     + sheetHtml
-    + (order.length ? `<section class="hfol__all" id="${P}-todos" aria-label="${esc(L.allTitle)}"><h2 class="hfol__h2">${esc(L.allTitle)}</h2>${chips}<div class="hfol__grid">${cards}</div></section>` : "")
+    + (all.length ? `<section class="hfol__all" id="${P}-todos" aria-label="${esc(L.allTitle)}"><h2 class="hfol__h2">${esc(L.allTitle)}</h2>${chips}<div class="hfol__grid">${cards}</div></section>` : "")
     + `</div>`;
 }

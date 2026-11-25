@@ -63,10 +63,11 @@
   function localCfg() {
     const f = ST.f, products = {};
     for (const h of f.hotspots) if (h.sku && !products[h.sku]) products[h.sku] = prod(h.sku);
+    for (const x of f.skus || []) if (!products[x.sku]) products[x.sku] = prod(x.sku); // unpinned list products are listed in the block too
     return {
       id: f.id || "folheto-preview", name: f.name, title: f.title, market: f.market, locale: f.market === "es" ? "es-ES" : "pt-PT", currency: "EUR",
       pages: f.pages.map((p, i) => ({ n: i + 1, ratio: p.ratio, section: p.section || "", src: imgFor(i + 1) })), hotspots: f.hotspots, products,
-      validFrom: f.validFrom, validTo: f.validTo,
+      validFrom: f.validFrom, validTo: f.validTo, list: (f.skus || []).map((x) => x.sku),
     };
   }
 
@@ -413,7 +414,7 @@
     const f = ST.f, list = f.skus || [], u = unplaced();
     const missing = list.filter((x) => isMissing(x.sku));
     box.innerHTML = `
-      <p class="small muted" style="margin-top:0">Cola os SKUs do folheto (um por linha, ou separados por vírgulas; opcional o preço impresso a seguir, ex. <code>473088;14,99</code>) ou carrega um CSV / Excel (1.ª coluna SKU, 2.ª preço impresso). Depois é só ir à página e colocar os pins.</p>
+      <p class="small muted" style="margin-top:0">Cola os SKUs do folheto (um por linha, ou separados por vírgulas; opcional o preço impresso a seguir, ex. <code>473088;14,99</code>) ou carrega um CSV / Excel (1.ª coluna SKU, 2.ª preço impresso). Depois é só ir à página e colocar os pins. Os produtos encontrados e com stock aparecem em “Todos os produtos do folheto” no site, mesmo sem pin.</p>
       <textarea id="sk-in" rows="4" style="width:100%;box-sizing:border-box;font-family:ui-monospace,Menlo,monospace;font-size:12px" placeholder="473088;14,99&#10;433902&#10;457953 9,99 €"></textarea>
       <div class="row" style="margin-top:6px"><button class="btn sm" id="sk-add">Adicionar à lista</button><label class="btn sm" style="cursor:pointer">Carregar ficheiro<input type="file" id="sk-file" accept=".csv,.txt,.xlsx,.xls" hidden></label>
         <span class="grow"></span>${list.length ? `<button class="btn sm ghost danger" id="sk-clear">Limpar</button>` : ""}</div>
