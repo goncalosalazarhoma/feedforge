@@ -23,6 +23,12 @@ assert.deepEqual([s.hotspots[0].x, s.hotspots[0].y, s.hotspots[0].sku, s.hotspot
 assert.deepEqual([s.hotspots[1].w, s.hotspots[1].h], [10, 10], "area clamped inside the page");
 assert.equal(F.imageHostOk("https://www.homastores.com/on/demandware.static/x/{n}.jpg"), true);
 assert.equal(F.imageHostOk("https://homa-feedforge.netlify.app/{n}.jpg"), false, "CSP of the site");
+assert.equal(F.normalizePattern("https://www.homastores.com/lib/natal/12.jpg"), "https://www.homastores.com/lib/natal/{n}.jpg", "URL of one page → pattern");
+assert.equal(F.normalizePattern("https://x.demandware.net/lib/v123/n.jpg"), "https://x.demandware.net/lib/v123/{n}.jpg");
+assert.equal(F.sanitizeFolheto({ imagePattern: "https://www.homastores.com/a/3.webp?sw=1400" }).imagePattern, "https://www.homastores.com/a/{n}.webp?sw=1400");
+assert.equal(F.findPdfLink('<a class="dl" href="https://catalogo.homa.pt/71760/3381251/pdfs/8ea.pdf?response-content-disposition=attachment%3B&amp;x=1">Baixar PDF</a>', "https://catalogo.homa.pt/p/1"), "https://catalogo.homa.pt/71760/3381251/pdfs/8ea.pdf?response-content-disposition=attachment%3B&x=1");
+assert.equal(F.findPdfLink("<html>sem pdf</html>", "https://x"), null);
+assert.deepEqual(F.sanitizeSkus(["473088", { sku: " 433902 ", printedPrice: "14.99" }, "473088", "", { sku: "x", printedPrice: "abc" }]), [{ sku: "473088", printedPrice: null }, { sku: "433902", printedPrice: 14.99 }, { sku: "x", printedPrice: null }], "product list: trimmed, unique, prices");
 console.log("Sanitize OK");
 
 // ---- hydrate: live SFCC > feed; missing; search URL fallback
@@ -45,24 +51,51 @@ assert.equal(fp, F.fingerprint(F.hydrateFolheto(fol, catalog, live)), "stable");
 assert.notEqual(fp, F.fingerprint(F.hydrateFolheto(fol, catalog, { ...live, markets: { pt: { ...live.markets.pt, "473088": { ...live.markets.pt["473088"], price: 12 } } } })), "price change → new fingerprint");
 console.log("Hydrate OK");
 
-// ---- render (export): static, tracking, nothing without a product
-const html = renderFolheto(cfg, { css });
+// ---- render (export): static reader (no JS), tracking only on PDP links, nothing without a product
+const R = await import("../public/folhetos/render.mjs");
+assert.deepEqual(R.spreadsOf(6), [[1], [2, 3], [4, 5], [6]], "cover alone, then pairs");
+live.markets.pt["473088"].stock = 3; // ≤ 5 → "Últimas unidades"
+const cfgR = F.hydrateFolheto({ ...fol, validFrom: "2026-11-20", validTo: "2026-12-24", pages: [{ ratio: 0.7071, section: "Árvores e iluminação" }, { ratio: 0.7071, section: "Mesa de Natal" }] }, catalog, live);
+assert.equal(cfgR.products["473088"].low, true);
+const html = renderFolheto(cfgR, { css });
+const noCss = (h) => h.replace(/<style>[\s\S]*?<\/style>/, "");
+const body = noCss(html);
 assert.ok(!/<script/i.test(html), "no JavaScript");
 assert.ok(!/ style="/.test(html), "no inline styles");
-assert.ok(html.includes(`data-ff-list-id="${listIdOf(cfg)}"`) && html.includes(`data-ff-list-name="${listNameOf(cfg)}"`));
-assert.equal(listNameOf(cfg), "Folheto - Natal");
-const links = [...html.matchAll(/<a class="hfol__(card|area)[^"]*" href="([^"]+)"([^>]*)>/g)];
-assert.equal(links.length, 3, "473088 (dot), 474166 (area), 500 (dot) — 999 and the empty one are not exported");
-assert.match(links[0][3], /data-item-id="473088" data-item-name="Almofada SAVOY" data-item-price="14.00" data-item-index="1" data-item-cat="Decoração &gt; Almofadas"/);
-assert.ok(html.includes('data-ff-pin="473088"'));
-assert.ok(html.includes("Esgotado"), "out of stock label");
+assert.ok(html.includes(`data-ff-list-id="${listIdOf(cfgR)}"`) && html.includes(`data-ff-list-name="${listNameOf(cfgR)}"`));
+assert.equal(listNameOf(cfgR), "Folheto - Natal");
+// state: one radio per spread (2 pages → [1] [2]), per product (+ none), per page with products (+ none), tabs, index
+assert.equal((body.match(/name="hfol-natal-s"/g) || []).length, 2);
+assert.equal((body.match(/class="hfol__r hfol__rp"/g) || []).length, 3, "473088, 474166, 500 — 999 and the empty one are left out");
+assert.ok(body.includes('id="hfol-natal-p1" data-ff-pin="473088"'), "pin event from the product radio");
+// "+" / area labels open the product; only real links carry data-item-* (select_item)
+assert.equal((body.match(/<label class="hfol__hs /g) || []).length, 3);
+assert.ok(!/<label[^>]*data-item-id/.test(body), "labels never fire select_item");
+const links = [...body.matchAll(/<a class="([^"]+)" href="([^"]+)"([^>]*)>/g)].filter((m) => m[3].includes("data-item-id"));
+assert.ok(links.length >= 9, "detail (image + button), sheet list, grid card per product");
+assert.match(links.find((m) => m[1].startsWith("hfol__card"))[3], /data-item-id="473088" data-item-name="Almofada SAVOY" data-item-price="14.00" data-item-index="1" data-item-cat="Decoração &gt; Almofadas"/);
+// header, side panel, sheet, all products
+assert.ok(body.includes("Válido de 20/11/2026 a 24/12/2026 · 2 páginas · 3 produtos"));
+assert.ok(body.includes('<h2 class="hfol__title">Ofertas de Natal</h2>'));
+assert.ok(body.includes("Nestas páginas") && body.includes("Ref. 473088"));
+assert.ok(body.includes("Últimas unidades") && body.includes("Esgotado"));
+assert.ok(body.includes("Ver os 2 produtos desta página"), "mobile CTA on page 1");
+assert.ok(body.includes('href="#hfol-natal-todos"') && body.includes('id="hfol-natal-todos"'));
+assert.ok(body.includes("Todos os produtos do folheto"));
+assert.ok(body.includes('for="hfol-natal-f1">Árvores e iluminação</label>'), "section filter from the page section");
+assert.ok(!/Adicionar|carrinho/i.test(body), "no cart");
+// rules: spread / list / detail / sheet / filter
 assert.ok(html.includes("#hfol-natal .hfol__pg--1{aspect-ratio:0.7071}"));
-assert.ok(html.includes('<h2 class="hfol__title">Ofertas de Natal</h2>'));
-const noCss = (h) => h.replace(/<style>[\s\S]*?<\/style>/, "");
-assert.ok(!noCss(html).includes("hfol__miss"));
-const pv = renderFolheto(cfg, { css, preview: true, imageFor: (n) => `data:image/jpeg;base64,${n}` });
+assert.ok(html.includes("#hfol-natal:has(#hfol-natal-s1:checked) .hfol__sp--1{display:grid}"));
+assert.ok(html.includes("#hfol-natal:has(#hfol-natal-s0:checked):has(#hfol-natal-p1:checked) .hfol__det--1{display:block}"));
+assert.ok(html.includes("#hfol-natal:has(#hfol-natal-s0:checked):not(:has(#hfol-natal-p1:checked,#hfol-natal-p2:checked)) .hfol__list--0{display:block}"));
+assert.ok(html.includes("#hfol-natal:has(#hfol-natal-m1:checked):not(:has(#hfol-natal-ta:checked)) .hfol__sl--1{display:block}"));
+assert.ok(html.includes("#hfol-natal:has(#hfol-natal-f1:checked) .hfol__card:not(.hfol__sec--1){display:none}"));
+assert.ok(!body.includes("hfol__miss"));
+const pv = renderFolheto(cfgR, { css, preview: true, imageFor: (n) => `data:image/jpeg;base64,${n}` });
 assert.equal((noCss(pv).match(/hfol__miss/g) || []).length, 2, "preview marks the hotspots without a product");
 assert.ok(pv.includes('src="data:image/jpeg;base64,1"'));
+delete live.markets.pt["473088"].stock;
 console.log("Render OK");
 
 // ---- API: create → live set synced with the hotspots; update; exported / outdated; delete
@@ -88,6 +121,14 @@ assert.equal((await call("POST", "/folhetos", { name: "Folheto Natal" })).json.f
 r = await call("PUT", `/folhetos/${id}`, { ...r.json.folheto, hotspots: [{ page: 1, x: 10, y: 10, sku: "474166", printedPrice: 19 }] });
 set = await db.get(L.LK.set(F.liveSetId(id)));
 assert.deepEqual(set.items.map((i) => i.id), ["474166"], "removed hotspot → SKU leaves the live list");
+{ // product list (pasted SKUs): in the live list before the pins are placed; the list's printed price fills a pin without one
+  const r2 = await call("PUT", `/folhetos/${id}`, { ...r.json.folheto, skus: [{ sku: "474166", printedPrice: 25 }, { sku: "473088", printedPrice: 18 }] });
+  assert.equal(r2.json.folheto.skus.length, 2);
+  const s2 = await db.get(L.LK.set(F.liveSetId(id)));
+  assert.deepEqual(s2.items, [{ id: "474166", printedPrice: 19 }, { id: "473088", printedPrice: 18 }]);
+  assert.equal(r2.json.render.products["473088"], undefined, "unplaced SKUs are not in the block (nor in the export fingerprint)");
+  r = await call("PUT", `/folhetos/${id}`, { ...r2.json.folheto, skus: [] });
+}
 assert.equal(r.json.status.outdated, false, "never exported");
 assert.equal((await call("POST", `/folhetos/${id}/exported`, { fingerprint: "wrong" })).status, 409);
 r = await call("POST", `/folhetos/${id}/exported`, { fingerprint: r.json.status.fingerprint });
@@ -101,6 +142,22 @@ assert.deepEqual(list.map((x) => [x.id, x.alerts]), [["folheto-natal", 1], ["fol
 r = await call("POST", `/folhetos/${id}/refresh`, {});
 assert.match(r.json.run.error || "", /SFCC_CLIENT_ID/, "missing env → error reported, no crash");
 assert.equal((await call("GET", "/folhetos/pdf?url=ftp://x")).status, 400);
+{ // PDF proxy: a catalogue page is resolved to its PDF link; a page without one is refused (no more "invalid PDF" in pdf.js)
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (u) => {
+    u = String(u);
+    if (u.endsWith("/page/1")) return new Response('<html><a href="/71760/pdfs/x.pdf?dl=1">Baixar PDF</a></html>', { headers: { "content-type": "text/html" } });
+    if (u.includes("/pdfs/x.pdf")) { const r = new Response("%PDF-1.7 corpo", { headers: { "content-type": "application/pdf" } }); Object.defineProperty(r, "url", { value: u }); return r; }
+    return new Response("<html>nada</html>", { headers: { "content-type": "text/html" } });
+  };
+  const ok = await api(new Request("https://app.test/api/folhetos/pdf?url=" + encodeURIComponent("https://catalogo.homa.pt/natal/page/1"), { headers: { authorization: "Bearer pw" } }));
+  assert.equal(ok.status, 200);
+  assert.equal(await ok.text(), "%PDF-1.7 corpo");
+  assert.equal(decodeURI(ok.headers.get("x-pdf-url")), "https://catalogo.homa.pt/71760/pdfs/x.pdf?dl=1");
+  const bad = await api(new Request("https://app.test/api/folhetos/pdf?url=" + encodeURIComponent("https://exemplo.pt/folheto"), { headers: { authorization: "Bearer pw" } }));
+  assert.equal(bad.status, 415);
+  globalThis.fetch = realFetch;
+}
 assert.equal((await call("DELETE", `/folhetos/${id}`)).json.ok, true);
 assert.equal((await call("GET", `/folhetos/${id}`)).status, 404);
 assert.ok(!(await db.get(L.LK.sets())).includes(F.liveSetId(id)), "live set removed");

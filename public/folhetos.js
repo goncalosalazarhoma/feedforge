@@ -9,22 +9,23 @@
   const MARKETS = { pt: "PT", es: "ES" };
   const PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";
   const JSZIP = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";
-  const IMG_W = 1600; // page image width (px) for the site
+  const IMG_W = 1400; // page image width (px) for the site (2 pages side by side on desktop ≈ 700 px each, sharp on retina)
   const OK_HOSTS = [/(^|\.)homastores\.com$/, /\.demandware\.net$/, /\.commercecloud\.salesforce\.com$/, /(^|\.)amazonaws\.com$/, /(^|\.)homa\.pt$/]; // = folhetos.mjs ALLOWED_IMG (site CSP)
   const FONTS = ["Regular:400", "Medium:500"].map((f) => { const [n, w] = f.split(":"); return `@font-face{font-family:Gilroy;font-weight:${w};src:url("https://www.homastores.com/mobify/bundle/106/static/fonts/gilroy/Gilroy${n}.woff2") format("woff2")}`; }).join("");
   const ALERT = { price: "preço ≠ impresso", oos: "esgotado", missing: "inativo / não encontrado" };
 
   const ST = {
     f: null, saved: "", status: null, render: null, tab: "folheto", page: 1, sel: -1, mode: "dot", device: "desktop",
-    imgs: {}, pdfInfo: "", picker: PP.newState(), assets: null, exported: "",
+    imgs: {}, pdfInfo: "", picker: PP.newState(), assets: null, exported: "", arm: null,
   };
-  const blank = () => ({ name: "Novo folheto", market: "pt", validFrom: "", validTo: "", pdfUrl: "", imagePattern: "", title: "", pageCount: 0, pages: [], hotspots: [] });
+  const blank = () => ({ name: "Novo folheto", market: "pt", validFrom: "", validTo: "", pdfUrl: "", imagePattern: "", title: "", pageCount: 0, pages: [], hotspots: [], skus: [] });
   const dirty = () => ST.f && JSON.stringify(ST.f) !== ST.saved;
   const hid = () => `h${Date.now().toString(36).slice(-5)}${Math.random().toString(36).slice(2, 5)}`;
   const r2 = (v) => Math.round(v * 100) / 100;
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const fmt = (n) => PP.fmt(n, ST.f?.market);
   const hostOk = (p) => { try { const u = new URL(p.replace("{n}", "1")); return u.protocol === "https:" && OK_HOSTS.some((re) => re.test(u.hostname)); } catch { return false; } };
+  const normPattern = (u) => { const v = String(u || "").trim(); return !v || v.includes("{n}") ? v : v.replace(/\/(\d+|n)\.(jpe?g|png|webp)(?=$|[?#])/i, "/{n}.$2"); }; // = folhetos.mjs normalizePattern
   const imgFor = (n) => ST.imgs[n] || (ST.f.imagePattern ? ST.f.imagePattern.replaceAll("{n}", String(n)) : "");
   const fmtDate = (s) => (s ? new Date(s).toLocaleString("pt-PT", { dateStyle: "short", timeStyle: "short" }) : "—");
 
@@ -54,7 +55,7 @@
     return { id: c.id, name: c.title, price: c.salePrice ?? c.price, listPrice: c.salePrice ? c.price : null, image: c.image, url: c.link, inStock: c.inStock, path: c.path || [], source: "feed" };
   }
   async function loadSkus() {
-    const need = [...new Set(ST.f.hotspots.map((h) => h.sku).filter((s) => s && !ST.render?.products?.[s]))];
+    const need = [...new Set([...ST.f.hotspots.map((h) => h.sku), ...(ST.f.skus || []).map((x) => x.sku)].filter((s) => s && !ST.render?.products?.[s]))];
     if (need.length) await PP.fetchIds(ST.f.market, need).catch((e) => toast(e.message, true));
   }
   const alertsFor = (sku) => (ST.status?.alerts || []).filter((a) => a.sku === sku);
@@ -64,7 +65,8 @@
     for (const h of f.hotspots) if (h.sku && !products[h.sku]) products[h.sku] = prod(h.sku);
     return {
       id: f.id || "folheto-preview", name: f.name, title: f.title, market: f.market, locale: f.market === "es" ? "es-ES" : "pt-PT", currency: "EUR",
-      pages: f.pages.map((p, i) => ({ n: i + 1, ratio: p.ratio, src: imgFor(i + 1) })), hotspots: f.hotspots, products,
+      pages: f.pages.map((p, i) => ({ n: i + 1, ratio: p.ratio, section: p.section || "", src: imgFor(i + 1) })), hotspots: f.hotspots, products,
+      validFrom: f.validFrom, validTo: f.validTo,
     };
   }
 
@@ -74,21 +76,41 @@
     window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + "pdf.worker.min.js";
     return window.pdfjsLib;
   }
+  const isPdf = (buf) => new TextDecoder("latin1").decode(new Uint8Array(buf, 0, Math.min(1024, buf.byteLength))).includes("%PDF-");
   async function fetchPdf(url) {
     try { // the PDF host may allow cross-origin reads…
       const r = await fetch(url, { mode: "cors" });
-      if (r.ok) return await r.arrayBuffer();
+      if (r.ok) { const b = await r.arrayBuffer(); if (isPdf(b)) return { buf: b, url }; }
     } catch {}
-    const r = await api(`/folhetos/pdf?url=${encodeURIComponent(url)}`, { raw: true }); // …otherwise through the FeedForge proxy
+    // …otherwise through the FeedForge proxy (also turns a catalogue page, e.g. Publitas, into its PDF link)
+    const r = await api(`/folhetos/pdf?url=${encodeURIComponent(url)}`, { raw: true });
     if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || `Erro ${r.status} ao ler o PDF`); }
-    return r.arrayBuffer();
+    const buf = await r.arrayBuffer();
+    if (!isPdf(buf)) throw new Error("O ficheiro descarregado não é um PDF. Usa o link direto do ficheiro (“Baixar PDF” no catálogo).");
+    let real = url;
+    try { real = decodeURI(r.headers.get("x-pdf-url") || url); } catch {}
+    return { buf, url: real };
+  }
+  // does the page image open? (wrong folder / name in the SFCC library, instance protected, …)
+  const imgCache = {};
+  function checkImg(u) {
+    if (!u) return Promise.resolve(false);
+    return (imgCache[u] ||= new Promise((ok) => {
+      const i = new Image(); const t = setTimeout(() => ok(false), 10000);
+      i.onload = () => { clearTimeout(t); ok(i.naturalWidth > 0); }; i.onerror = () => { clearTimeout(t); ok(false); };
+      i.src = u;
+    }));
   }
   async function loadPdf(main, { keepPages = false } = {}) {
     const f = ST.f;
     if (!f.pdfUrl) return toast("Indica o URL do PDF", true);
     ST.pdfInfo = "A ler o PDF…"; info();
     const lib = await pdfLib();
-    const doc = await lib.getDocument({ data: new Uint8Array(await fetchPdf(f.pdfUrl)) }).promise;
+    const got = await fetchPdf(f.pdfUrl);
+    if (got.url !== f.pdfUrl) { f.pdfUrl = got.url; toast("Era a página do catálogo: usei o link do PDF"); }
+    let doc;
+    try { doc = await lib.getDocument({ data: new Uint8Array(got.buf) }).promise; }
+    catch (e) { throw new Error(`Não foi possível abrir o PDF (${e.message}).`); }
     const n = Math.min(doc.numPages, 80);
     const pages = [];
     ST.imgs = {};
@@ -99,8 +121,9 @@
       const vp = page.getViewport({ scale: IMG_W / v1.width });
       const c = document.createElement("canvas"); c.width = Math.round(vp.width); c.height = Math.round(vp.height);
       const ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
-      await page.render({ canvasContext: ctx, viewport: vp }).promise;
-      ST.imgs[i] = c.toDataURL("image/jpeg", 0.85);
+      // intent "print": pdf.js does not wait for requestAnimationFrame, so it keeps rendering when the tab is in the background
+      await page.render({ canvasContext: ctx, viewport: vp, intent: "print" }).promise;
+      ST.imgs[i] = c.toDataURL("image/jpeg", 0.8);
       pages.push({ ratio: Math.round((v1.width / v1.height) * 10000) / 10000 });
     }
     if (!keepPages || f.pageCount !== n) {
@@ -128,6 +151,9 @@
     } catch (e) { toast(e.message, true); } finally { btn.disabled = false; }
   }
 
+  // Esc stops placing products from the list
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && ST.f && ST.arm && ST.main?.isConnected) { ST.arm = null; drawEditor(ST.main); } });
+
   // ------------------------------------------------------------------ list
   VIEWS.folhetos = async (main) => {
     if (ST.f) return drawEditor(main);
@@ -150,7 +176,7 @@
   async function openFolheto(id, main) {
     await guard(async () => {
       if (id) { const r = await api(`/folhetos/${id}`); apply(r); } else { ST.f = blank(); ST.saved = ""; ST.status = null; ST.render = null; }
-      ST.imgs = {}; ST.page = 1; ST.sel = -1; ST.tab = "folheto"; ST.exported = ""; ST.pdfInfo = "";
+      ST.imgs = {}; ST.page = 1; ST.sel = -1; ST.arm = null; ST.tab = "folheto"; ST.exported = ""; ST.pdfInfo = "";
       ST.picker = { ...ST.picker, q: "", category: "", subcategory: "", page: 1, result: null };
       await loadSkus();
       drawEditor(main);
@@ -171,6 +197,7 @@
   // ------------------------------------------------------------------ editor
   function drawEditor(main) {
     const f = ST.f, st = ST.status;
+    ST.main = main;
     main.innerHTML = `
       <style>
         .fol-layout{display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:16px;align-items:start}
@@ -207,10 +234,12 @@
       <div class="fol-layout">
         <div style="min-width:0">
           <div class="row" style="margin-bottom:8px">
-            <div class="chips"><span class="chip ${ST.mode === "dot" ? "on" : ""}" data-mode="dot">● Ponto + cartão</span><span class="chip ${ST.mode === "area" ? "on" : ""}" data-mode="area">▭ Área clicável</span></div>
+            <div class="chips"><span class="chip ${ST.mode === "dot" ? "on" : ""}" data-mode="dot">＋ Ponto</span><span class="chip ${ST.mode === "area" ? "on" : ""}" data-mode="area">▭ Área clicável</span></div>
             <span class="grow"></span><span class="small muted">${ST.mode === "dot" ? "Clica na página para pôr um ponto; arrasta para mover." : "Arrasta na página para desenhar a área; o canto ajusta o tamanho."}</span>
           </div>
+          ${ST.arm && f.pageCount ? `<div class="callout info" style="margin-bottom:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span style="flex:1;min-width:200px">A colocar <b>${esc(ST.arm)}</b>${prod(ST.arm)?.name ? ` · ${esc(prod(ST.arm).name)}` : ""} — ${ST.mode === "dot" ? "clica na página onde está o produto" : "arrasta na página para marcar a área"} (${unplaced().length} por colocar).</span><button class="btn sm" id="arm-skip">Saltar</button><button class="btn sm" id="arm-stop">Parar</button></div>` : ""}
           ${f.pageCount ? `<div class="fol-strip">${f.pages.map((p, i) => { const n = i + 1, c = f.hotspots.filter((h) => h.page === n).length; return `<button class="fol-th ${ST.page === n ? "on" : ""}" data-pg="${n}" style="aspect-ratio:${p.ratio}">${imgFor(n) ? `<img src="${esc(imgFor(n))}" alt="" loading="lazy">` : ""}<span>${n}${c ? ` · ${c}` : ""}</span></button>`; }).join("")}</div>
+            <div class="row" style="margin-bottom:8px"><label class="small" for="fol-sec" style="white-space:nowrap">Secção da página ${ST.page}</label><input id="fol-sec" value="${esc(f.pages[ST.page - 1]?.section || "")}" placeholder="ex. Árvores e iluminação (opcional: filtros de “Todos os produtos”)" style="flex:1"></div>
             <div class="fol-stagewrap"><div class="fol-stage" id="fol-stage" style="--r:${f.pages[ST.page - 1]?.ratio || 0.7071}">${imgFor(ST.page) ? `<img src="${esc(imgFor(ST.page))}" alt="">` : ""}</div></div>`
           : `<div class="card empty">Indica o URL do PDF no separador Folheto e carrega-o: as páginas aparecem aqui para marcares os produtos.</div>`}
           <div class="row" style="margin:16px 0 8px"><b>Pré-visualização</b><span class="grow"></span>
@@ -219,7 +248,7 @@
           <p class="small muted" style="margin-top:6px">Igual ao que vai para o site (passa o rato nos pontos). Hotspots a vermelho não têm produto válido e não são exportados.</p>
         </div>
         <div class="card fol-panel">
-          <div class="chips" style="margin-bottom:8px">${[["folheto", "Folheto"], ["hotspots", `Produtos · ${f.hotspots.length}`], ["dados", `Dados SFCC${st?.alerts?.length ? ` · ⚠ ${st.alerts.length}` : ""}`], ["exportar", "Exportar"]].map(([k, l]) => `<span class="chip ${ST.tab === k ? "on" : ""}" data-tab="${k}">${l}</span>`).join("")}</div>
+          <div class="chips" style="margin-bottom:8px">${[["folheto", "Folheto"], ["lista", `Lista${(f.skus || []).length ? ` · ${unplaced().length ? `${unplaced().length}/` : ""}${f.skus.length}` : ""}`], ["hotspots", `Pins · ${f.hotspots.length}`], ["dados", `Dados SFCC${st?.alerts?.length ? ` · ⚠ ${st.alerts.length}` : ""}`], ["exportar", "Exportar"]].map(([k, l]) => `<span class="chip ${ST.tab === k ? "on" : ""}" data-tab="${k}">${l}</span>`).join("")}</div>
           <div id="fol-tab"></div>
         </div>
       </div>`;
@@ -230,6 +259,9 @@
     $$("[data-pg]", main).forEach((b) => (b.onclick = () => { ST.page = +b.dataset.pg; ST.sel = -1; drawEditor(main); }));
     $$("[data-dev]", main).forEach((c) => (c.onclick = () => { ST.device = c.dataset.dev; $(".fol-frame").className = `fol-frame ${ST.device}`; $$("[data-dev]", main).forEach((o) => o.classList.toggle("on", o === c)); fitFrame(); }));
     $$("[data-tab]", main).forEach((c) => (c.onclick = () => { ST.tab = c.dataset.tab; drawEditor(main); }));
+    if ($("#fol-sec")) $("#fol-sec").onchange = (e) => { const pg = f.pages[ST.page - 1]; const v = e.target.value.trim().slice(0, 60); if (v) pg.section = v; else delete pg.section; changed(main, { stage: false }); };
+    if ($("#arm-skip")) $("#arm-skip").onclick = () => { ST.arm = nextUnplaced(ST.arm); drawEditor(main); };
+    if ($("#arm-stop")) $("#arm-stop").onclick = () => { ST.arm = null; drawEditor(main); };
     drawStage(main);
     buildFrame();
     drawTab(main);
@@ -279,13 +311,14 @@
       ST.sel = +el.dataset.i; h = f.hotspots[ST.sel];
       mode = e.target.matches("[data-rs]") ? "resize" : "move";
     } else if (ST.mode === "dot") {
-      h = { id: hid(), page: ST.page, type: "dot", x: r2(start.x), y: r2(start.y), sku: "", printedPrice: null };
+      h = { id: hid(), page: ST.page, type: "dot", x: r2(start.x), y: r2(start.y), sku: ST.arm || "", printedPrice: poolPrice(ST.arm) };
       f.hotspots.push(h); ST.sel = f.hotspots.length - 1; mode = "move"; moved = true;
     } else {
-      h = { id: hid(), page: ST.page, type: "area", x: r2(start.x), y: r2(start.y), w: 0, h: 0, sku: "", printedPrice: null };
+      h = { id: hid(), page: ST.page, type: "area", x: r2(start.x), y: r2(start.y), w: 0, h: 0, sku: ST.arm || "", printedPrice: poolPrice(ST.arm) };
       f.hotspots.push(h); ST.sel = f.hotspots.length - 1; mode = "draw";
     }
     const orig = { ...h };
+    const placing = !el && !!ST.arm;
     stage.setPointerCapture(e.pointerId);
     drawStage(main);
     const move = (ev) => {
@@ -305,11 +338,100 @@
     const up = () => {
       stage.removeEventListener("pointermove", move); stage.removeEventListener("pointerup", up); stage.removeEventListener("pointercancel", up);
       if (mode === "draw" && (h.w < 1.5 || h.h < 1.5)) { f.hotspots.splice(ST.sel, 1); ST.sel = -1; toast("Arrasta para desenhar a área"); drawStage(main); return; }
+      if (placing) { ST.arm = nextUnplaced(h.sku); if (!ST.arm) toast("Todos os produtos da lista estão colocados"); ST.tab = ST.arm ? "lista" : "hotspots"; return drawEditor(main); }
       ST.tab = "hotspots";
       if (moved || mode === "draw") changed(main, { tab: true }); else { drawStage(main); drawTab(main); }
       $$("[data-tab]", main).forEach((c) => c.classList.toggle("on", c.dataset.tab === "hotspots"));
     };
     stage.addEventListener("pointermove", move); stage.addEventListener("pointerup", up); stage.addEventListener("pointercancel", up);
+  }
+
+  // ------------------------------------------------------------------ product list (pasted / uploaded SKUs) → pins
+  const placedPages = (sku) => [...new Set(ST.f.hotspots.filter((h) => h.sku === sku).map((h) => h.page))].sort((a, b) => a - b);
+  const unplaced = () => (ST.f.skus || []).filter((x) => !ST.f.hotspots.some((h) => h.sku === x.sku)).map((x) => x.sku);
+  const poolPrice = (sku) => (ST.f.skus || []).find((x) => x.sku === sku)?.printedPrice ?? null;
+  function nextUnplaced(after) {
+    const u = unplaced().filter((s) => s !== after);
+    if (!u.length) return null;
+    const order = (ST.f.skus || []).map((x) => x.sku);
+    const from = order.indexOf(after);
+    return u.find((s) => order.indexOf(s) > from) || u[0];
+  }
+  // "473088", "473088;14,99", "473088 14.99 €", "473088, 433902, 457953" (one line), spreadsheet rows [sku, price]
+  const toPrice = (v) => { if (v === null || v === undefined || v === "") return null; const n = Number(String(v).replace(/[€\s]/g, "").replace(/\.(?=\d{3}(\D|$))/g, "").replace(",", ".")); return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : null; };
+  const isHeader = (a) => /^(sku|ref|refer|artigo|c[oó]d|id\b|ean|produto)/i.test(a);
+  function parseRows(rows) {
+    const out = [];
+    for (const r of rows) {
+      const a = String(r[0] ?? "").trim().replace(/\.0+$/, "");
+      if (!a || isHeader(a)) continue;
+      out.push({ sku: a.slice(0, 40), printedPrice: toPrice(r[1]) });
+    }
+    return out;
+  }
+  function parseText(t) {
+    const rows = [];
+    for (const line0 of String(t || "").split(/\r?\n/)) {
+      const line = line0.trim(); if (!line) continue;
+      let cells = line.split(/[;\t]+/).map((c) => c.trim()).filter(Boolean);
+      if (cells.length === 1) {
+        const tok = line.replace(/(\d),(\d{1,2})(?!\d)/g, "$1.$2").replace(/€/g, " ").split(/[\s,]+/).filter(Boolean);
+        const price = tok.length === 2 && /^\d+(\.\d{1,2})?$/.test(tok[1]) && (tok[1].includes(".") || line.includes("€") || tok[1].length <= 4);
+        if (price) cells = tok; else { for (const x of tok) rows.push([x]); continue; }
+      }
+      rows.push(cells);
+    }
+    return parseRows(rows);
+  }
+  async function parseFile(file) {
+    if (/\.(xlsx|xls)$/i.test(file.name)) {
+      await loadScript("https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js");
+      const wb = window.XLSX.read(await file.arrayBuffer(), { type: "array" });
+      return parseRows(window.XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: false }));
+    }
+    return parseText(await file.text());
+  }
+  async function addSkus(list, main) {
+    const f = ST.f; f.skus ||= [];
+    const have = new Set(f.skus.map((x) => x.sku));
+    let added = 0, updated = 0;
+    for (const x of list) {
+      if (have.has(x.sku)) { const cur = f.skus.find((y) => y.sku === x.sku); if (x.printedPrice !== null && cur.printedPrice !== x.printedPrice) { cur.printedPrice = x.printedPrice; updated++; } continue; }
+      if (f.skus.length >= 500) break;
+      f.skus.push(x); have.add(x.sku); added++;
+    }
+    await PP.fetchIds(f.market, list.map((x) => x.sku)).catch((e) => toast(e.message, true));
+    const miss = list.filter((x) => PP.cache[f.market][x.sku] === null && !ST.render?.products?.[x.sku]).length;
+    toast(`${added} SKU(s) adicionados${updated ? ` · ${updated} preço(s) atualizados` : ""}${miss ? ` · ${miss} não estão no feed` : ""}`, !added && !updated);
+    drawEditor(main);
+  }
+
+  function tabLista(box, main) {
+    const f = ST.f, list = f.skus || [], u = unplaced();
+    box.innerHTML = `
+      <p class="small muted" style="margin-top:0">Cola os SKUs do folheto (um por linha, ou separados por vírgulas; opcional o preço impresso a seguir, ex. <code>473088;14,99</code>) ou carrega um CSV / Excel (1.ª coluna SKU, 2.ª preço impresso). Depois é só ir à página e colocar os pins.</p>
+      <textarea id="sk-in" rows="4" style="width:100%;box-sizing:border-box;font-family:ui-monospace,Menlo,monospace;font-size:12px" placeholder="473088;14,99&#10;433902&#10;457953 9,99 €"></textarea>
+      <div class="row" style="margin-top:6px"><button class="btn sm" id="sk-add">Adicionar à lista</button><label class="btn sm" style="cursor:pointer">Carregar ficheiro<input type="file" id="sk-file" accept=".csv,.txt,.xlsx,.xls" hidden></label>
+        <span class="grow"></span>${list.length ? `<button class="btn sm ghost danger" id="sk-clear">Limpar</button>` : ""}</div>
+      ${list.length ? `<div class="row" style="margin:12px 0 8px"><b class="small">${list.length} produto(s) · ${list.length - u.length} colocado(s)</b><span class="grow"></span>${u.length && f.pageCount ? `<button class="btn sm primary" id="sk-place">${ST.arm ? "A colocar…" : `Colocar por ordem (${u.length})`}</button>` : ""}</div>
+        ${list.map((x, i) => { const p = prod(x.sku), pg = placedPages(x.sku), on = ST.arm === x.sku; return `<div class="fol-hs ${on ? "on" : ""}" style="cursor:default">${p && !p.missing && p.image ? `<img src="${esc(p.image)}" alt="">` : `<img alt="">`}
+          <div style="min-width:0;flex:1"><div class="small" style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p?.name || x.sku)} <span class="muted mono">${esc(x.sku)}</span></div>
+            <div class="small">${p && !p.missing && !p.loading ? `${fmt(p.price)}${p.inStock === false ? ` <span class="badge flag">esgotado</span>` : ""}` : p?.loading ? `<span class="muted">a carregar…</span>` : `<span class="badge ex">não encontrado</span>`}
+              · impresso <input data-sk-price="${i}" type="number" min="0" step="0.01" value="${x.printedPrice ?? ""}" placeholder="—" style="width:72px;padding:2px 4px"> €</div></div>
+          ${pg.length ? `<span class="badge new" title="Colocado">✓ pág. ${pg.join(", ")}</span>` : `<button class="btn sm" data-sk-arm="${esc(x.sku)}" ${f.pageCount ? "" : "disabled"}>${on ? "A colocar" : "Colocar"}</button>`}
+          <button class="btn sm ghost danger" data-sk-rm="${i}" title="Tirar da lista">✕</button></div>`; }).join("")}`
+      : `<p class="small muted" style="margin-top:12px">Ainda sem lista.</p>`}`;
+    $("#sk-add").onclick = (e) => guard(async () => { const l = parseText($("#sk-in").value); if (!l.length) return toast("Não encontrei SKUs no texto", true); await addSkus(l, main); }, e.target);
+    $("#sk-file").onchange = (e) => guard(async () => { const file = e.target.files[0]; if (!file) return; const l = await parseFile(file); if (!l.length) return toast("Não encontrei SKUs no ficheiro (1.ª coluna)", true); await addSkus(l, main); });
+    if ($("#sk-clear")) $("#sk-clear").onclick = async () => { if (await ask("Tirar todos os SKUs da lista? Os pins já colocados ficam.", { ok: "Limpar" })) { f.skus = []; ST.arm = null; changed(main, { stage: false }); drawEditor(main); } };
+    if ($("#sk-place")) $("#sk-place").onclick = () => { ST.arm = ST.arm || u[0]; drawEditor(main); };
+    $$("[data-sk-arm]", box).forEach((b) => (b.onclick = () => { ST.arm = b.dataset.skArm; drawEditor(main); }));
+    $$("[data-sk-rm]", box).forEach((b) => (b.onclick = () => { const [x] = f.skus.splice(+b.dataset.skRm, 1); if (ST.arm === x.sku) ST.arm = null; changed(main, { stage: false }); drawEditor(main); }));
+    $$("[data-sk-price]", box).forEach((el) => (el.onchange = () => {
+      const x = f.skus[+el.dataset.skPrice]; x.printedPrice = toPrice(el.value);
+      for (const h of f.hotspots) if (h.sku === x.sku && h.printedPrice == null) h.printedPrice = x.printedPrice; // pins without their own printed price
+      changed(main, { stage: false });
+    }));
   }
 
   // ------------------------------------------------------------------ preview (same renderer as the export)
@@ -344,7 +466,7 @@
   // ------------------------------------------------------------------ right panel
   function drawTab(main) {
     const box = $("#fol-tab"); if (!box) return;
-    ({ folheto: tabFolheto, hotspots: tabHotspots, dados: tabDados, exportar: tabExport })[ST.tab](box, main);
+    ({ folheto: tabFolheto, lista: tabLista, hotspots: tabHotspots, dados: tabDados, exportar: tabExport })[ST.tab](box, main);
   }
 
   function tabFolheto(box, main) {
@@ -366,6 +488,7 @@
       <input data-k="imagePattern" value="${esc(f.imagePattern)}" placeholder="https://www.homastores.com/on/demandware.static/-/Library-Sites-…/folhetos/natal/{n}.jpg">
       ${warnHost ? `<div class="callout" style="margin-top:6px">⚠ O site só aceita imagens de homastores.com, demandware.net, commercecloud.salesforce.com ou amazonaws.com (política de segurança). Carrega as imagens na biblioteca do SFCC.</div>` : ""}
       ${f.imagePattern && !f.imagePattern.includes("{n}") ? `<div class="callout" style="margin-top:6px">⚠ Falta <code>{n}</code> no URL (é substituído por 1, 2, 3…).</div>` : ""}
+      ${f.imagePattern && f.imagePattern.includes("{n}") && !warnHost ? `<p class="small" id="fol-imgcheck" style="margin:6px 0 0">A verificar a imagem da página 1…</p>` : ""}
       <p class="small muted" style="margin:6px 0 0">1. Carrega o PDF · 2. <a href="#" id="fol-zip">Descarrega as imagens (.zip)</a> e põe-nas numa pasta da biblioteca do SFCC (1.jpg, 2.jpg…) · 3. Cola aqui o URL de uma delas, trocando o número por <code>{n}</code>.</p>
       ${!ST.imgs[1] ? `<label>Nº de páginas (sem PDF carregado)</label><input type="number" min="0" max="80" data-k="pageCount" value="${f.pageCount}">` : ""}`;
     $$("[data-k]", box).forEach((el) => (el.onchange = () => {
@@ -376,11 +499,15 @@
         f.hotspots = f.hotspots.filter((h) => h.page <= n); ST.page = clamp(ST.page, 1, Math.max(1, n));
         return drawEditor(main);
       }
-      f[k] = el.value.trim();
+      f[k] = k === "imagePattern" ? normPattern(el.value) : el.value.trim();
       if (k === "market") { PP.fetchIds(f.market, f.hotspots.map((h) => h.sku).filter(Boolean)).finally(() => drawEditor(main)); return; }
       if (k === "imagePattern" || k === "name") return drawEditor(main);
       changed(main, { stage: false });
     }));
+    if ($("#fol-imgcheck")) {
+      const u1 = f.imagePattern.replaceAll("{n}", "1");
+      checkImg(u1).then((ok) => { const el = $("#fol-imgcheck"); if (el) el.innerHTML = ok ? `<span style="color:var(--ok)">✓ A imagem da página 1 abre.</span>` : `<span style="color:var(--bad)">✕ A imagem da página 1 não abre: <a href="${esc(u1)}" target="_blank" rel="noopener">${esc(u1)}</a>. Confirma a pasta e o nome dos ficheiros na biblioteca (1.jpg, 2.jpg…).</span>`; });
+    }
     $("#fol-loadpdf").onclick = (e) => { f.pdfUrl = $('[data-k="pdfUrl"]', box).value.trim(); guard(() => loadPdf(main, { keepPages: !!f.pageCount }), e.target); };
     $("#fol-zip").onclick = (e) => { e.preventDefault(); downloadZip(e.target); };
   }
@@ -403,7 +530,7 @@
         <div class="row" style="margin-top:8px">${p && !p.missing && p.image ? `<img src="${esc(p.image)}" alt="" style="width:48px;height:48px;object-fit:cover;border-radius:6px">` : ""}
           <div style="min-width:0;flex:1"><div class="small" style="font-weight:600">${esc(p?.name || h.sku || "Escolhe o produto abaixo ou escreve o SKU")}</div><div class="small">${productLine(p, h)}</div></div></div>
         <div class="grid two" style="gap:8px">
-          <div><label>Tipo</label><select id="hs-type"><option value="dot" ${h.type === "dot" ? "selected" : ""}>Ponto + cartão</option><option value="area" ${h.type === "area" ? "selected" : ""}>Área clicável</option></select></div>
+          <div><label>Tipo</label><select id="hs-type"><option value="dot" ${h.type === "dot" ? "selected" : ""}>Ponto “+”</option><option value="area" ${h.type === "area" ? "selected" : ""}>Área clicável</option></select></div>
           <div><label>SKU</label><input id="hs-sku" value="${esc(h.sku)}" placeholder="ex. 473088"></div>
           <div><label>Preço impresso (€)</label><input id="hs-price" type="number" min="0" step="0.01" value="${h.printedPrice ?? ""}" placeholder="para validar"></div>
         </div>
@@ -487,6 +614,7 @@
     const oos = [...new Set(f.hotspots.map((h) => h.sku).filter((s) => s && prod(s)?.inStock === false))];
     if (oos.length) warns.push(`Esgotados (aparecem com “Esgotado”): ${oos.join(", ")}.`);
     if (!f.hotspots.length) warns.push("Ainda não há produtos no folheto.");
+    if (!f.imagePattern.includes("{n}") && f.imagePattern) issues.push("Falta {n} no URL das imagens.");
     box.innerHTML = `
       <p class="small muted">O bloco do site não consegue ir buscar dados, por isso o código leva os preços e o stock de agora. <b>Quando os dados mudarem, este editor avisa</b> e é preciso gerar e colar de novo.</p>
       <div class="small">Última exportação: <b>${fmtDate(st?.exportedAt)}</b> ${st?.exportedAt ? (st.outdated ? `<span class="badge flag">desatualizada</span>` : `<span class="badge new">em dia</span>`) : ""}</div>
@@ -495,9 +623,17 @@
       <div class="row" style="margin-top:10px"><button class="btn primary" id="fol-gen" ${issues.length ? "disabled" : ""}>Gerar código</button><button class="btn" id="fol-zip2">Imagens das páginas (.zip)</button></div>
       <textarea id="fol-code" rows="12" readonly style="width:100%;font-family:ui-monospace,Menlo,monospace;font-size:11px;margin-top:8px;${ST.exported ? "" : "display:none"}">${esc(ST.exported)}</textarea>
       <div class="row" style="margin-top:6px"><button class="btn sm" id="fol-copy" ${ST.exported ? "" : "hidden"}>Copiar código</button></div>
-      <p class="small muted" style="margin-top:10px">No Page Designer: componente <b>Raw HTML</b>, cola o código. Só HTML + CSS: as páginas deslizam na horizontal, os cartões abrem ao passar o rato ou tocar no ponto.</p>
+      <p class="small muted" style="margin-top:10px">No Page Designer: componente <b>Raw HTML</b>, cola o código. Só HTML + CSS. No desktop: duas páginas lado a lado com setas e painel com os produtos dessas páginas (ou o produto do “+”); no telemóvel: uma página de cada vez e “Ver os produtos desta página”. Em baixo, todos os produtos, com filtro por secção. Sem carrinho: cada produto leva à página do produto.</p>
       <p class="small muted"><b>Tracking:</b> com a tag do FeedForge no GTM, envia <code>view_item_list</code> / <code>select_item</code> com <code>item_list_name</code> “Folheto - ${esc(f.name)}”.</p>`;
     $("#fol-zip2").onclick = (e) => downloadZip(e.target);
+    if (!issues.length) {
+      const u1 = f.imagePattern.replaceAll("{n}", "1");
+      checkImg(u1).then((ok) => {
+        if (ok || ST.tab !== "exportar") return;
+        const g = $("#fol-gen"); if (g) g.disabled = true;
+        g?.insertAdjacentHTML("beforebegin", `<div class="callout" style="margin:0 0 8px;border-color:#e8b4b4;background:#fbeeee;width:100%">✕ A imagem da página 1 não abre (<a href="${esc(u1)}" target="_blank" rel="noopener">abrir</a>). Confirma o URL das imagens no separador Folheto.</div>`);
+      });
+    }
     $("#fol-gen").onclick = (e) => guard(async () => {
       const r = await api(`/folhetos/${f.id}`);
       apply(r);
