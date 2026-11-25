@@ -130,7 +130,8 @@ export function hydrateFolheto(f, catalog, live) {
   const byId = new Map((catalog?.items || []).map((p) => [p.id, p]));
   const liveP = live?.markets?.[f.market] || {};
   const products = {};
-  for (const sku of new Set(f.hotspots.map((h) => h.sku).filter(Boolean))) {
+  // pinned products + the rest of the uploaded list (the block also lists the unpinned ones that are found and in stock)
+  for (const sku of new Set([...f.hotspots.map((h) => h.sku), ...(f.skus || []).map((x) => x.sku)].filter(Boolean))) {
     const feed = byId.get(sku), l = liveP[sku];
     if (!feed && !l) { products[sku] = { id: sku, missing: true }; continue; }
     const price = l ? l.price : feed.salePrice ?? feed.price;
@@ -152,6 +153,7 @@ export function hydrateFolheto(f, catalog, live) {
     id: f.id, name: f.name, title: f.title, market: f.market, locale: LOCALES[f.market], currency: "EUR",
     pages: f.pages.map((p, i) => ({ n: i + 1, ratio: p.ratio, section: p.section || "", src: f.imagePattern ? f.imagePattern.replaceAll("{n}", String(i + 1)) : "" })),
     hotspots: f.hotspots,
+    list: (f.skus || []).map((x) => x.sku),
     products,
     validFrom: f.validFrom, validTo: f.validTo,
     liveAt: live?.fetchedAt || null, feedAt: catalog?.generatedAt || null,
