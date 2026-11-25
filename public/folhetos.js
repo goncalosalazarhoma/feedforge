@@ -25,6 +25,7 @@
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const fmt = (n) => PP.fmt(n, ST.f?.market);
   const hostOk = (p) => { try { const u = new URL(p.replace("{n}", "1")); return u.protocol === "https:" && OK_HOSTS.some((re) => re.test(u.hostname)); } catch { return false; } };
+  const normPattern = (u) => { const v = String(u || "").trim(); return !v || v.includes("{n}") ? v : v.replace(/\/(\d+|n)\.(jpe?g|png|webp)(?=$|[?#])/i, "/{n}.$2"); }; // = folhetos.mjs normalizePattern
   const imgFor = (n) => ST.imgs[n] || (ST.f.imagePattern ? ST.f.imagePattern.replaceAll("{n}", String(n)) : "");
   const fmtDate = (s) => (s ? new Date(s).toLocaleString("pt-PT", { dateStyle: "short", timeStyle: "short" }) : "—");
 
@@ -74,21 +75,41 @@
     window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + "pdf.worker.min.js";
     return window.pdfjsLib;
   }
+  const isPdf = (buf) => new TextDecoder("latin1").decode(new Uint8Array(buf, 0, Math.min(1024, buf.byteLength))).includes("%PDF-");
   async function fetchPdf(url) {
     try { // the PDF host may allow cross-origin reads…
       const r = await fetch(url, { mode: "cors" });
-      if (r.ok) return await r.arrayBuffer();
+      if (r.ok) { const b = await r.arrayBuffer(); if (isPdf(b)) return { buf: b, url }; }
     } catch {}
-    const r = await api(`/folhetos/pdf?url=${encodeURIComponent(url)}`, { raw: true }); // …otherwise through the FeedForge proxy
+    // …otherwise through the FeedForge proxy (also turns a catalogue page, e.g. Publitas, into its PDF link)
+    const r = await api(`/folhetos/pdf?url=${encodeURIComponent(url)}`, { raw: true });
     if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || `Erro ${r.status} ao ler o PDF`); }
-    return r.arrayBuffer();
+    const buf = await r.arrayBuffer();
+    if (!isPdf(buf)) throw new Error("O ficheiro descarregado não é um PDF. Usa o link direto do ficheiro (“Baixar PDF” no catálogo).");
+    let real = url;
+    try { real = decodeURI(r.headers.get("x-pdf-url") || url); } catch {}
+    return { buf, url: real };
+  }
+  // does the page image open? (wrong folder / name in the SFCC library, instance protected, …)
+  const imgCache = {};
+  function checkImg(u) {
+    if (!u) return Promise.resolve(false);
+    return (imgCache[u] ||= new Promise((ok) => {
+      const i = new Image(); const t = setTimeout(() => ok(false), 10000);
+      i.onload = () => { clearTimeout(t); ok(i.naturalWidth > 0); }; i.onerror = () => { clearTimeout(t); ok(false); };
+      i.src = u;
+    }));
   }
   async function loadPdf(main, { keepPages = false } = {}) {
     const f = ST.f;
     if (!f.pdfUrl) return toast("Indica o URL do PDF", true);
     ST.pdfInfo = "A ler o PDF…"; info();
     const lib = await pdfLib();
-    const doc = await lib.getDocument({ data: new Uint8Array(await fetchPdf(f.pdfUrl)) }).promise;
+    const got = await fetchPdf(f.pdfUrl);
+    if (got.url !== f.pdfUrl) { f.pdfUrl = got.url; toast("Era a página do catálogo: usei o link do PDF"); }
+    let doc;
+    try { doc = await lib.getDocument({ data: new Uint8Array(got.buf) }).promise; }
+    catch (e) { throw new Error(`Não foi possível abrir o PDF (${e.message}).`); }
     const n = Math.min(doc.numPages, 80);
     const pages = [];
     ST.imgs = {};
@@ -367,6 +388,7 @@
       <input data-k="imagePattern" value="${esc(f.imagePattern)}" placeholder="https://www.homastores.com/on/demandware.static/-/Library-Sites-…/folhetos/natal/{n}.jpg">
       ${warnHost ? `<div class="callout" style="margin-top:6px">⚠ O site só aceita imagens de homastores.com, demandware.net, commercecloud.salesforce.com ou amazonaws.com (política de segurança). Carrega as imagens na biblioteca do SFCC.</div>` : ""}
       ${f.imagePattern && !f.imagePattern.includes("{n}") ? `<div class="callout" style="margin-top:6px">⚠ Falta <code>{n}</code> no URL (é substituído por 1, 2, 3…).</div>` : ""}
+      ${f.imagePattern && f.imagePattern.includes("{n}") && !warnHost ? `<p class="small" id="fol-imgcheck" style="margin:6px 0 0">A verificar a imagem da página 1…</p>` : ""}
       <p class="small muted" style="margin:6px 0 0">1. Carrega o PDF · 2. <a href="#" id="fol-zip">Descarrega as imagens (.zip)</a> e põe-nas numa pasta da biblioteca do SFCC (1.jpg, 2.jpg…) · 3. Cola aqui o URL de uma delas, trocando o número por <code>{n}</code>.</p>
       ${!ST.imgs[1] ? `<label>Nº de páginas (sem PDF carregado)</label><input type="number" min="0" max="80" data-k="pageCount" value="${f.pageCount}">` : ""}`;
     $$("[data-k]", box).forEach((el) => (el.onchange = () => {
@@ -377,11 +399,15 @@
         f.hotspots = f.hotspots.filter((h) => h.page <= n); ST.page = clamp(ST.page, 1, Math.max(1, n));
         return drawEditor(main);
       }
-      f[k] = el.value.trim();
+      f[k] = k === "imagePattern" ? normPattern(el.value) : el.value.trim();
       if (k === "market") { PP.fetchIds(f.market, f.hotspots.map((h) => h.sku).filter(Boolean)).finally(() => drawEditor(main)); return; }
       if (k === "imagePattern" || k === "name") return drawEditor(main);
       changed(main, { stage: false });
     }));
+    if ($("#fol-imgcheck")) {
+      const u1 = f.imagePattern.replaceAll("{n}", "1");
+      checkImg(u1).then((ok) => { const el = $("#fol-imgcheck"); if (el) el.innerHTML = ok ? `<span style="color:var(--ok)">✓ A imagem da página 1 abre.</span>` : `<span style="color:var(--bad)">✕ A imagem da página 1 não abre: <a href="${esc(u1)}" target="_blank" rel="noopener">${esc(u1)}</a>. Confirma a pasta e o nome dos ficheiros na biblioteca (1.jpg, 2.jpg…).</span>`; });
+    }
     $("#fol-loadpdf").onclick = (e) => { f.pdfUrl = $('[data-k="pdfUrl"]', box).value.trim(); guard(() => loadPdf(main, { keepPages: !!f.pageCount }), e.target); };
     $("#fol-zip").onclick = (e) => { e.preventDefault(); downloadZip(e.target); };
   }
@@ -488,6 +514,7 @@
     const oos = [...new Set(f.hotspots.map((h) => h.sku).filter((s) => s && prod(s)?.inStock === false))];
     if (oos.length) warns.push(`Esgotados (aparecem com “Esgotado”): ${oos.join(", ")}.`);
     if (!f.hotspots.length) warns.push("Ainda não há produtos no folheto.");
+    if (!f.imagePattern.includes("{n}") && f.imagePattern) issues.push("Falta {n} no URL das imagens.");
     box.innerHTML = `
       <p class="small muted">O bloco do site não consegue ir buscar dados, por isso o código leva os preços e o stock de agora. <b>Quando os dados mudarem, este editor avisa</b> e é preciso gerar e colar de novo.</p>
       <div class="small">Última exportação: <b>${fmtDate(st?.exportedAt)}</b> ${st?.exportedAt ? (st.outdated ? `<span class="badge flag">desatualizada</span>` : `<span class="badge new">em dia</span>`) : ""}</div>
@@ -499,6 +526,14 @@
       <p class="small muted" style="margin-top:10px">No Page Designer: componente <b>Raw HTML</b>, cola o código. Só HTML + CSS: as páginas deslizam na horizontal, os cartões abrem ao passar o rato ou tocar no ponto.</p>
       <p class="small muted"><b>Tracking:</b> com a tag do FeedForge no GTM, envia <code>view_item_list</code> / <code>select_item</code> com <code>item_list_name</code> “Folheto - ${esc(f.name)}”.</p>`;
     $("#fol-zip2").onclick = (e) => downloadZip(e.target);
+    if (!issues.length) {
+      const u1 = f.imagePattern.replaceAll("{n}", "1");
+      checkImg(u1).then((ok) => {
+        if (ok || ST.tab !== "exportar") return;
+        const g = $("#fol-gen"); if (g) g.disabled = true;
+        g?.insertAdjacentHTML("beforebegin", `<div class="callout" style="margin:0 0 8px;border-color:#e8b4b4;background:#fbeeee;width:100%">✕ A imagem da página 1 não abre (<a href="${esc(u1)}" target="_blank" rel="noopener">abrir</a>). Confirma o URL das imagens no separador Folheto.</div>`);
+      });
+    }
     $("#fol-gen").onclick = (e) => guard(async () => {
       const r = await api(`/folhetos/${f.id}`);
       apply(r);
