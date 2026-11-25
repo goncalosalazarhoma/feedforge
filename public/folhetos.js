@@ -9,7 +9,7 @@
   const MARKETS = { pt: "PT", es: "ES" };
   const PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";
   const JSZIP = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";
-  const IMG_W = 1600; // page image width (px) for the site
+  const IMG_W = 1400; // page image width (px) for the site (2 pages side by side on desktop ≈ 700 px each, sharp on retina)
   const OK_HOSTS = [/(^|\.)homastores\.com$/, /\.demandware\.net$/, /\.commercecloud\.salesforce\.com$/, /(^|\.)amazonaws\.com$/, /(^|\.)homa\.pt$/]; // = folhetos.mjs ALLOWED_IMG (site CSP)
   const FONTS = ["Regular:400", "Medium:500"].map((f) => { const [n, w] = f.split(":"); return `@font-face{font-family:Gilroy;font-weight:${w};src:url("https://www.homastores.com/mobify/bundle/106/static/fonts/gilroy/Gilroy${n}.woff2") format("woff2")}`; }).join("");
   const ALERT = { price: "preço ≠ impresso", oos: "esgotado", missing: "inativo / não encontrado" };
@@ -99,8 +99,9 @@
       const vp = page.getViewport({ scale: IMG_W / v1.width });
       const c = document.createElement("canvas"); c.width = Math.round(vp.width); c.height = Math.round(vp.height);
       const ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
-      await page.render({ canvasContext: ctx, viewport: vp }).promise;
-      ST.imgs[i] = c.toDataURL("image/jpeg", 0.85);
+      // intent "print": pdf.js does not wait for requestAnimationFrame, so it keeps rendering when the tab is in the background
+      await page.render({ canvasContext: ctx, viewport: vp, intent: "print" }).promise;
+      ST.imgs[i] = c.toDataURL("image/jpeg", 0.8);
       pages.push({ ratio: Math.round((v1.width / v1.height) * 10000) / 10000 });
     }
     if (!keepPages || f.pageCount !== n) {
