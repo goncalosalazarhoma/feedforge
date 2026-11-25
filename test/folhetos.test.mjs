@@ -23,6 +23,11 @@ assert.deepEqual([s.hotspots[0].x, s.hotspots[0].y, s.hotspots[0].sku, s.hotspot
 assert.deepEqual([s.hotspots[1].w, s.hotspots[1].h], [10, 10], "area clamped inside the page");
 assert.equal(F.imageHostOk("https://www.homastores.com/on/demandware.static/x/{n}.jpg"), true);
 assert.equal(F.imageHostOk("https://homa-feedforge.netlify.app/{n}.jpg"), false, "CSP of the site");
+assert.equal(F.normalizePattern("https://www.homastores.com/lib/natal/12.jpg"), "https://www.homastores.com/lib/natal/{n}.jpg", "URL of one page → pattern");
+assert.equal(F.normalizePattern("https://x.demandware.net/lib/v123/n.jpg"), "https://x.demandware.net/lib/v123/{n}.jpg");
+assert.equal(F.sanitizeFolheto({ imagePattern: "https://www.homastores.com/a/3.webp?sw=1400" }).imagePattern, "https://www.homastores.com/a/{n}.webp?sw=1400");
+assert.equal(F.findPdfLink('<a class="dl" href="https://catalogo.homa.pt/71760/3381251/pdfs/8ea.pdf?response-content-disposition=attachment%3B&amp;x=1">Baixar PDF</a>', "https://catalogo.homa.pt/p/1"), "https://catalogo.homa.pt/71760/3381251/pdfs/8ea.pdf?response-content-disposition=attachment%3B&x=1");
+assert.equal(F.findPdfLink("<html>sem pdf</html>", "https://x"), null);
 console.log("Sanitize OK");
 
 // ---- hydrate: live SFCC > feed; missing; search URL fallback
@@ -101,6 +106,22 @@ assert.deepEqual(list.map((x) => [x.id, x.alerts]), [["folheto-natal", 1], ["fol
 r = await call("POST", `/folhetos/${id}/refresh`, {});
 assert.match(r.json.run.error || "", /SFCC_CLIENT_ID/, "missing env → error reported, no crash");
 assert.equal((await call("GET", "/folhetos/pdf?url=ftp://x")).status, 400);
+{ // PDF proxy: a catalogue page is resolved to its PDF link; a page without one is refused (no more "invalid PDF" in pdf.js)
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (u) => {
+    u = String(u);
+    if (u.endsWith("/page/1")) return new Response('<html><a href="/71760/pdfs/x.pdf?dl=1">Baixar PDF</a></html>', { headers: { "content-type": "text/html" } });
+    if (u.includes("/pdfs/x.pdf")) { const r = new Response("%PDF-1.7 corpo", { headers: { "content-type": "application/pdf" } }); Object.defineProperty(r, "url", { value: u }); return r; }
+    return new Response("<html>nada</html>", { headers: { "content-type": "text/html" } });
+  };
+  const ok = await api(new Request("https://app.test/api/folhetos/pdf?url=" + encodeURIComponent("https://catalogo.homa.pt/natal/page/1"), { headers: { authorization: "Bearer pw" } }));
+  assert.equal(ok.status, 200);
+  assert.equal(await ok.text(), "%PDF-1.7 corpo");
+  assert.equal(decodeURI(ok.headers.get("x-pdf-url")), "https://catalogo.homa.pt/71760/pdfs/x.pdf?dl=1");
+  const bad = await api(new Request("https://app.test/api/folhetos/pdf?url=" + encodeURIComponent("https://exemplo.pt/folheto"), { headers: { authorization: "Bearer pw" } }));
+  assert.equal(bad.status, 415);
+  globalThis.fetch = realFetch;
+}
 assert.equal((await call("DELETE", `/folhetos/${id}`)).json.ok, true);
 assert.equal((await call("GET", `/folhetos/${id}`)).status, 404);
 assert.ok(!(await db.get(L.LK.sets())).includes(F.liveSetId(id)), "live set removed");
