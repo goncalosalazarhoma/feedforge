@@ -22,11 +22,18 @@ export const ALLOWED_IMG = [/(^|\.)homastores\.com$/, /\.demandware\.net$/, /\.c
 export const imageHostOk = (url) => { try { const u = new URL(url.replace("{n}", "1")); return u.protocol === "https:" && ALLOWED_IMG.some((re) => re.test(u.hostname)); } catch { return false; } };
 
 // "…/natal/1.jpg" (URL of one page copied from the library) or "…/n.jpg" → "…/natal/{n}.jpg"
+// The SFCC instance host (…demandware.net) only opens inside the company network / with a Business Manager session:
+// on a phone the images fail. The same file is public on the storefront domain → use it.
+export const STOREFRONT_HOSTS = { development: "development.homastores.com", staging: "staging.homastores.com", production: "www.homastores.com" };
+export function publicImageUrl(u) {
+  return String(u || "").replace(/^https:\/\/(development|staging|production)-[a-z0-9]+-[a-z0-9]+\.demandware\.net(?=\/on\/demandware\.static\/)/i, (_, env) => `https://${STOREFRONT_HOSTS[env.toLowerCase()]}`);
+}
 export function normalizePattern(u) {
-  const s = String(u || "").trim();
+  const s = publicImageUrl(String(u || "").trim());
   if (!s || s.includes("{n}")) return s;
   return s.replace(/\/(\d+|n)\.(jpe?g|png|webp)(?=$|[?#])/i, "/{n}.$2");
 }
+export const SHADOWS = 4; // "+" contrast: 0 = Figma default … 3 = maximum
 
 // a viewer page (Publitas, …) instead of the PDF itself: find the download link in its HTML
 export function findPdfLink(html, base) {
@@ -65,6 +72,7 @@ export function sanitizeFolheto(b = {}) {
       x, y,
       ...(area ? { w: Math.max(1, Math.min(100 - x, pct(h.w, 10))), h: Math.max(1, Math.min(100 - y, pct(h.h, 10))) } : {}),
       sku: String(h.sku || "").trim().slice(0, 40),
+      ...(!area && Number(h.shadow) >= 1 && Number(h.shadow) < SHADOWS ? { shadow: Math.round(Number(h.shadow)) } : {}),
       printedPrice: h.printedPrice === "" || h.printedPrice === null || h.printedPrice === undefined || !Number.isFinite(Number(h.printedPrice)) ? null : Math.round(Number(h.printedPrice) * 100) / 100,
     };
   });
@@ -162,7 +170,7 @@ export function hydrateFolheto(f, catalog, live) {
 
 // what the exported HTML depends on: if this changes, the code on the site is out of date
 export function fingerprint(cfg) {
-  const data = { p: cfg.pages.map((p) => [p.src, p.ratio, p.section || ""]), v: [cfg.validFrom, cfg.validTo], h: cfg.hotspots.map((h) => [h.page, h.type, h.x, h.y, h.w, h.h, h.sku]), d: Object.values(cfg.products).sort((a, b) => a.id.localeCompare(b.id)).map((p) => [p.id, p.name, p.price, p.listPrice, p.inStock, !!p.low, p.url, p.image, !!p.missing]), t: cfg.title };
+  const data = { p: cfg.pages.map((p) => [p.src, p.ratio, p.section || ""]), v: [cfg.validFrom, cfg.validTo], h: cfg.hotspots.map((h) => [h.page, h.type, h.x, h.y, h.w, h.h, h.sku, h.shadow || 0]), d: Object.values(cfg.products).sort((a, b) => a.id.localeCompare(b.id)).map((p) => [p.id, p.name, p.price, p.listPrice, p.inStock, !!p.low, p.url, p.image, !!p.missing]), t: cfg.title };
   return crypto.createHash("sha256").update(JSON.stringify(data)).digest("hex").slice(0, 16);
 }
 
