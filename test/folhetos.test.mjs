@@ -75,6 +75,18 @@ assert.ok(body.includes('id="hfol-natal-p1" data-ff-pin="473088"'), "pin event f
 // "+" / area labels open the product; only real links carry data-item-* (select_item)
 assert.equal((body.match(/<label class="hfol__hs /g) || []).length, 3);
 assert.ok(!/<label[^>]*data-item-id/.test(body), "labels never fire select_item");
+// own flyer events (fol_*): container, pages and controls carry what ff-tracking.js reads
+assert.ok(body.includes('data-fol-id="natal" data-fol-name="Natal" data-fol-pages="2"'), "flyer id / name / page count");
+assert.equal((body.match(/<figure class="hfol__page hfol__pg--\d+" data-fol-page="\d+"/g) || []).length, 2, "one data-fol-page per page");
+assert.equal((body.match(/<label class="hfol__hs [^>]*data-fol-ev="pin" data-fol-src="ponto"/g) || []).length, 3, "pins → fol_pin_select");
+assert.ok(/class="hfol__row" for="hfol-natal-p\d+" data-fol-ev="pin" data-fol-src="lista"/.test(body), "panel rows → fol_pin_select (lista)");
+assert.ok(/class="hfol__cta" for="hfol-natal-m1" data-fol-ev="sheet" data-fol-src="pagina" data-fol-to="1"/.test(body), "mobile CTA → fol_page_products");
+assert.ok(/hfol__arrow--next"[^>]*data-fol-ev="nav" data-fol-src="seta" data-fol-to="2"/.test(body) && /hfol__th--1" for="hfol-natal-s1" data-fol-ev="nav" data-fol-src="miniatura" data-fol-to="2"/.test(body), "arrows / thumbs → fol_navigate");
+assert.ok(body.includes('data-fol-ev="index"') && body.includes('data-fol-ev="all"') && body.includes('data-fol-tab="folheto"') && body.includes('data-fol-filter="Mesa de Natal"'), "index, all products, tabs, filter");
+assert.ok(!/hfol__arrow--prev is-off"[^>]*data-fol-ev/.test(body), "disabled arrow sends nothing");
+const TJS = readFileSync(new URL("../public/tracking/ff-tracking.js", import.meta.url), "utf8");
+for (const e of ["fol_view", "fol_page_view", "fol_pin_select", "fol_page_products", "fol_navigate", "fol_index", "fol_tab", "fol_filter", "fol_all_products", "data-fol-page", "data-fol-ev", "i += 200"]) assert.ok(TJS.includes(e), `tracking tag: ${e}`);
+assert.ok(TJS.includes('list.hasAttribute("data-fol-id")'), "flyer pins are not sent as stl_pin_select");
 const links = [...body.matchAll(/<a class="([^"]+)" href="([^"]+)"([^>]*)>/g)].filter((m) => m[3].includes("data-item-id"));
 assert.ok(links.length >= 9, "detail (image + button), sheet list, grid card per product");
 assert.match(links.find((m) => m[1].startsWith("hfol__card"))[3], /data-item-id="473088" data-item-name="Almofada SAVOY" data-item-price="14.00" data-item-index="1" data-item-cat="Decoração &gt; Almofadas"/);
@@ -86,7 +98,7 @@ assert.ok(body.includes("Últimas unidades") && body.includes("Esgotado"));
 assert.ok(body.includes("Ver os 2 produtos desta página"), "mobile CTA on page 1");
 assert.ok(body.includes('href="#hfol-natal-todos"') && body.includes('id="hfol-natal-todos"'));
 assert.ok(body.includes("Todos os produtos do folheto"));
-assert.ok(body.includes('for="hfol-natal-f1">Árvores e iluminação</label>'), "section filter from the page section");
+assert.ok(body.includes('for="hfol-natal-f1" data-fol-ev="filter" data-fol-filter="Árvores e iluminação">Árvores e iluminação</label>'), "section filter from the page section");
 assert.ok(!/Adicionar|carrinho/i.test(body), "no cart");
 // rules: spread / list / detail / sheet / filter
 assert.ok(html.includes("#hfol-natal .hfol__pg--1{aspect-ratio:0.7071}"));
