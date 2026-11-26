@@ -30,8 +30,18 @@
     <tr><td><code>view_item_list</code></td><td>Quando o módulo / bloco de produtos fica pelo menos 50% visível, ou ocupa pelo menos metade do ecrã nos blocos mais altos (uma vez por página)</td><td rowspan="2"><code>ecommerce.item_list_id</code>, <code>item_list_name</code> e <code>items[]</code> com <code>item_id</code>, <code>item_name</code>, <code>price</code>, <code>quantity</code>, <code>index</code>, <code>item_category</code> ("Produtos"), <code>item_category2</code> / <code>item_category3</code> (categoria do feed), <code>item_list_id</code>, <code>item_list_name</code></td></tr>
     <tr><td><code>select_item</code></td><td>Clique num produto (cartão, popover do pin, destaque do Color Block)</td></tr>
     <tr><td><code>stl_pin_select</code></td><td>Abrir um pin do Shop the Look (toque, clique ou teclado)</td><td><code>stl_id</code>, <code>item_list_id</code>, <code>item_id</code>, <code>item_name</code></td></tr>
+    <tr><th colspan="3">Folhetos — eventos próprios, todos com <code>fol_id</code>, <code>fol_name</code>, <code>fol_pages</code> (nº de páginas) e <code>item_list_id</code></th></tr>
+    <tr><td><code>fol_view</code></td><td>O folheto fica visível (uma vez por página do site)</td><td>—</td></tr>
+    <tr><td><code>fol_page_view</code></td><td>Uma página do folheto é vista (≥ 60% no ecrã; uma vez por página do folheto)</td><td><code>page_number</code></td></tr>
+    <tr><td><code>fol_pin_select</code></td><td>Abrir um produto no folheto: ponto/área na página (<code>ponto</code>) ou linha do painel lateral (<code>lista</code>)</td><td><code>item_id</code>, <code>item_name</code>, <code>page_number</code>, <code>fol_source</code></td></tr>
+    <tr><td><code>fol_page_products</code></td><td>Telemóvel: “Ver os N produtos” de uma página (<code>pagina</code>) ou “Página seguinte” na folha (<code>seguinte</code>)</td><td><code>page_number</code>, <code>fol_source</code></td></tr>
+    <tr><td><code>fol_navigate</code></td><td>Desktop: mudar de páginas com as setas (<code>seta</code>) ou a tira de miniaturas (<code>miniatura</code>)</td><td><code>page_number</code> (primeira página de destino), <code>fol_source</code></td></tr>
+    <tr><td><code>fol_index</code></td><td>Abrir o índice de páginas</td><td>—</td></tr>
+    <tr><td><code>fol_tab</code></td><td>Telemóvel: separador da folha (<code>pagina</code> / <code>folheto</code>)</td><td><code>fol_tab</code></td></tr>
+    <tr><td><code>fol_filter</code></td><td>Filtro por secção em “Todos os produtos”</td><td><code>fol_filter</code></td></tr>
+    <tr><td><code>fol_all_products</code></td><td>Botão “Ver todos os produtos”</td><td>—</td></tr>
   </table>
-  <p class="muted">Nomes das listas: <code>Shop the Look - &lt;nome do módulo&gt;</code> (id <code>stl_&lt;id&gt;</code>) e <code>&lt;nome do elemento&gt; - &lt;título do bloco&gt;</code> no Page Builder (id <code>pb_&lt;elemento&gt;_&lt;bloco&gt;</code>). Antes de cada evento de ecommerce é enviado <code>{ ecommerce: null }</code>, como recomenda a Google.</p>
+  <p class="muted">Nomes das listas: <code>Shop the Look - &lt;nome do módulo&gt;</code> (id <code>stl_&lt;id&gt;</code>) e <code>&lt;nome do elemento&gt; - &lt;título do bloco&gt;</code> no Page Builder (id <code>pb_&lt;elemento&gt;_&lt;bloco&gt;</code>). Folhetos: <code>Folheto - &lt;nome&gt;</code> (id <code>fol_&lt;id&gt;</code>); nos folhetos o <code>select_item</code> é enviado ao clicar num produto que leva à PDP e os pontos não geram <code>stl_pin_select</code>. Listas com mais de 200 produtos vão em vários <code>view_item_list</code> (máximo do GA4 por evento). Antes de cada evento de ecommerce é enviado <code>{ ecommerce: null }</code>, como recomenda a Google.</p>
 
   <h2>Instalar (uma vez)</h2>
   <ol>
@@ -68,7 +78,7 @@
       container: { path: `accounts/${A}/containers/${C}`, accountId: A, containerId: C, name: "Hôma | Global", publicId: "GTM-MFRK69Z", usageContext: ["WEB"], fingerprint: fp },
       tag: [{
         accountId: A, containerId: C, tagId: "9001",
-        name: "FeedForge - tracking blocos (Shop the Look / Page Builder)",
+        name: "FeedForge - tracking blocos (Shop the Look / Page Builder / Folhetos)",
         type: "html",
         parameter: [
           { type: "TEMPLATE", key: "html", value: tagHtml },
