@@ -16,7 +16,7 @@
 
   const ST = {
     f: null, saved: "", status: null, render: null, tab: "folheto", page: 1, sel: -1, mode: "dot", device: "desktop",
-    imgs: {}, pdfInfo: "", picker: PP.newState(), assets: null, exported: "", arm: null,
+    imgs: {}, pdfInfo: "", picker: PP.newState(), assets: null, exported: "", arm: null, pdfRefs: null,
   };
   const blank = () => ({ name: "Novo folheto", market: "pt", validFrom: "", validTo: "", pdfUrl: "", imagePattern: "", title: "", pageCount: 0, pages: [], hotspots: [], skus: [] });
   const dirty = () => ST.f && JSON.stringify(ST.f) !== ST.saved;
@@ -119,8 +119,9 @@
     try { doc = await lib.getDocument({ data: new Uint8Array(got.buf) }).promise; }
     catch (e) { throw new Error(`Não foi possível abrir o PDF (${e.message}).`); }
     const n = Math.min(doc.numPages, 80);
-    const pages = [];
+    const pages = [], text = [];
     ST.imgs = {};
+    const { refsFromPages, itemsFromTextContent } = await import("/folhetos/refs.mjs");
     for (let i = 1; i <= n; i++) {
       ST.pdfInfo = `A gerar as imagens das páginas… ${i}/${n}`; info();
       const page = await doc.getPage(i);
@@ -132,14 +133,18 @@
       await page.render({ canvasContext: ctx, viewport: vp, intent: "print" }).promise;
       ST.imgs[i] = c.toDataURL("image/jpeg", 0.8);
       pages.push({ ratio: Math.round((v1.width / v1.height) * 10000) / 10000 });
+      // text layer: "Ref.: 468536" → SKU + position (for "Importar referências do PDF" in the Lista tab)
+      try { text.push({ page: i, items: itemsFromTextContent(await page.getTextContent(), v1) }); } catch {}
     }
+    ST.pdfRefs = refsFromPages(text);
     if (!keepPages || f.pageCount !== n) {
       f.pageCount = n; f.pages = pages;
       const out = f.hotspots.filter((h) => h.page > n).length;
       if (out) { f.hotspots = f.hotspots.filter((h) => h.page <= n); toast(`${out} hotspot(s) removidos (páginas que já não existem)`, true); }
     } else f.pages = pages;
     ST.page = clamp(ST.page, 1, Math.max(1, n));
-    ST.pdfInfo = `PDF: ${n} página(s)${doc.numPages > 80 ? ` (máx. 80 de ${doc.numPages})` : ""} · imagens geradas neste browser`;
+    const nr = ST.pdfRefs.skus.length;
+    ST.pdfInfo = `PDF: ${n} página(s)${doc.numPages > 80 ? ` (máx. 80 de ${doc.numPages})` : ""} · imagens geradas neste browser${nr ? ` · ${nr} referências (Ref.: …) encontradas — importa-as no separador Lista` : ""}`;
     drawEditor(main);
   }
   function info() { const el = $("#fol-pdfinfo"); if (el) el.textContent = ST.pdfInfo; }
@@ -183,7 +188,7 @@
   async function openFolheto(id, main) {
     await guard(async () => {
       if (id) { const r = await api(`/folhetos/${id}`); apply(r); } else { ST.f = blank(); ST.saved = ""; ST.status = null; ST.render = null; }
-      ST.imgs = {}; ST.page = 1; ST.sel = -1; ST.arm = null; ST.tab = "folheto"; ST.exported = ""; ST.pdfInfo = "";
+      ST.imgs = {}; ST.page = 1; ST.sel = -1; ST.arm = null; ST.tab = "folheto"; ST.exported = ""; ST.pdfInfo = ""; ST.pdfRefs = null;
       ST.picker = { ...ST.picker, q: "", category: "", subcategory: "", page: 1, result: null };
       await loadSkus();
       drawEditor(main);
@@ -419,11 +424,14 @@
   function tabLista(box, main) {
     const f = ST.f, list = f.skus || [], u = unplaced();
     const missing = list.filter((x) => isMissing(x.sku));
+    const refPins = refsToPlace();
     box.innerHTML = `
-      <p class="small muted" style="margin-top:0">Cola os SKUs do folheto (um por linha, ou separados por vírgulas; opcional o preço impresso a seguir, ex. <code>473088;14,99</code>) ou carrega um CSV / Excel (1.ª coluna SKU, 2.ª preço impresso). Depois é só ir à página e colocar os pins. Os produtos encontrados e com stock aparecem em “Todos os produtos do folheto” no site, mesmo sem pin.</p>
+      <p class="small muted" style="margin-top:0">Importa as referências impressas no PDF (“Ref.: 468536”), cola os SKUs do folheto (um por linha, ou separados por vírgulas; opcional o preço impresso a seguir, ex. <code>473088;14,99</code>) ou carrega um CSV / Excel (1.ª coluna SKU, 2.ª preço impresso). Depois é só ir à página e colocar os pins. Os produtos encontrados e com stock aparecem em “Todos os produtos do folheto” no site, mesmo sem pin.</p>
       <textarea id="sk-in" rows="4" style="width:100%;box-sizing:border-box;font-family:ui-monospace,Menlo,monospace;font-size:12px" placeholder="473088;14,99&#10;433902&#10;457953 9,99 €"></textarea>
       <div class="row" style="margin-top:6px"><button class="btn sm" id="sk-add">Adicionar à lista</button><label class="btn sm" style="cursor:pointer">Carregar ficheiro<input type="file" id="sk-file" accept=".csv,.txt,.xlsx,.xls" hidden></label>
+        ${f.pdfUrl ? `<button class="btn sm" id="sk-pdf" title="Lê as referências impressas no PDF (Ref.: 468536) e o preço a seguir">Importar referências do PDF</button>` : ""}
         <span class="grow"></span>${list.length ? `<button class="btn sm ghost danger" id="sk-clear">Limpar</button>` : ""}</div>
+      ${refPins.length ? `<div class="callout" style="margin-top:8px">${ST.pdfRefs.refs.length} referência(s) no PDF · <b>${refPins.length}</b> ainda sem ponto nessa página. <button class="btn sm primary" id="sk-pdf-pins" style="margin-left:6px">Colocar pontos junto às referências</button><div class="small muted" style="margin-top:4px">Um ponto por referência, logo acima do texto “Ref.:”; depois é só arrastar cada um para cima do produto.</div></div>` : ""}
       ${list.length ? `<div class="row" style="margin:12px 0 6px"><span class="grow"></span>${u.length && f.pageCount ? `<button class="btn sm primary" id="sk-place">${ST.arm ? "A colocar…" : `Colocar por ordem (${u.length})`}</button>` : ""}</div>
         <input id="sk-q" type="search" placeholder="Pesquisar na lista (SKU ou nome)…" value="${esc(ST.skq || "")}" style="width:100%;box-sizing:border-box;margin-bottom:6px">
         <div class="small" id="sk-sum" style="margin-bottom:8px"></div>
@@ -459,6 +467,42 @@
     if ($("#sk-clear")) $("#sk-clear").onclick = async () => { if (await ask("Tirar todos os SKUs da lista? Os pins já colocados ficam.", { ok: "Limpar" })) { f.skus = []; ST.arm = null; changed(main, { stage: false }); drawEditor(main); } };
     if ($("#sk-rm-missing")) $("#sk-rm-missing").onclick = () => { f.skus = f.skus.filter((x) => !isMissing(x.sku)); changed(main, { stage: false }); drawEditor(main); };
     if ($("#sk-place")) $("#sk-place").onclick = () => { ST.arm = ST.arm || u[0]; drawEditor(main); };
+    if ($("#sk-pdf")) $("#sk-pdf").onclick = (e) => guard(() => importPdfRefs(main), e.target);
+    if ($("#sk-pdf-pins")) $("#sk-pdf-pins").onclick = () => placeRefPins(main);
+  }
+
+  // ------------------------------------------------------------------ "Ref.: 468536" in the PDF → list (+ printed price) → pins
+  // references whose SKU has no pin on that page yet (pages that exist in the editor)
+  function refsToPlace() {
+    const f = ST.f, refs = ST.pdfRefs?.refs || [];
+    const seen = new Set();
+    return refs.filter((r) => {
+      const k = `${r.sku}@${r.page}`;
+      if (seen.has(k) || r.page > f.pageCount || f.hotspots.some((h) => h.sku === r.sku && h.page === r.page)) return false;
+      seen.add(k); return true;
+    });
+  }
+  async function importPdfRefs(main) {
+    if (!ST.pdfRefs) await loadPdf(main, { keepPages: !!ST.f.pageCount }); // reads the text layer too
+    const r = ST.pdfRefs;
+    if (!r?.skus.length) return toast("Não encontrei referências “Ref.: 123456” no texto do PDF (pode ser só imagem)", true);
+    const pages = new Set(r.refs.map((x) => x.page)).size;
+    toast(`PDF: ${r.refs.length} referência(s) em ${pages} página(s) · ${r.skus.length} SKU(s) diferentes`);
+    await addSkus(r.skus.map(({ sku, printedPrice }) => ({ sku, printedPrice })), main);
+    ST.tab = "lista"; drawEditor(main);
+  }
+  async function placeRefPins(main) {
+    const f = ST.f, todo = refsToPlace();
+    const room = Math.max(0, 400 - f.hotspots.length);
+    if (!todo.length) return;
+    if (!room) return toast("Limite de 400 hotspots atingido", true);
+    if (!(await ask(`Colocar ${Math.min(todo.length, room)} ponto(s), um junto a cada referência do PDF? Os pontos já colocados não mudam.${todo.length > room ? ` (Só cabem ${room}: o máximo é 400 hotspots.)` : ""}`, { ok: "Colocar pontos" }))) return;
+    for (const r of todo.slice(0, room)) {
+      f.hotspots.push({ id: hid(), page: r.page, type: "dot", x: r2(r.x), y: r2(clamp(r.y - 2.5, 1, 99)), sku: r.sku, printedPrice: r.price ?? poolPrice(r.sku) });
+    }
+    ST.arm = null;
+    toast(`${Math.min(todo.length, room)} ponto(s) colocados — confirma a posição de cada um página a página`);
+    changed(main); drawEditor(main);
   }
 
   // ------------------------------------------------------------------ preview (same renderer as the export)

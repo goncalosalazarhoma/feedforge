@@ -197,4 +197,32 @@ assert.equal((await call("GET", `/folhetos/${id}`)).status, 404);
 assert.ok(!(await db.get(L.LK.sets())).includes(F.liveSetId(id)), "live set removed");
 console.log("API OK");
 
+// "Ref.: 468536" in the PDF text layer → SKUs, page, position and printed price
+const RF = await import("../public/folhetos/refs.mjs");
+const it = (str, x, y) => ({ str, x, y });
+const rr = RF.refsFromPages([
+  { page: 1, items: [it("Árvore c/ LEDs SNOW LORD 210cm", 70, 45), it("Ref.: 468536", 76.8, 50.3), it("199 €", 76.8, 53)] },
+  { page: 2, items: [it("Almofada DACHSHUND", 10, 20), it("Ref.:", 10, 24), it("475681", 14, 24), it("10 €", 10, 27), it("12 €", 16, 27),
+    it("Manta natalícia", 40, 20), it("Ref.: 473006", 40, 24), it("Biscoito HO HO HO!", 60, 20), it("Ref.: 474816", 60, 24), it("2 ,50 €", 60, 27),
+    it("Pendurantes Vários modelos Várias referências desde 1 , 30 €/un", 80, 50), it("Ref.: 1234567", 5, 90), it("REF 468536", 50, 120)] },
+]);
+assert.deepEqual(rr.refs.map((r) => r.sku), ["468536", "475681", "473006", "474816", "468536"], "6-digit refs only, split items too, any case");
+assert.deepEqual(rr.refs[0], { sku: "468536", variants: ["468536"], page: 1, x: 76.8, y: 50.3, price: 199 }, "position of the ref text + price after it");
+assert.equal(rr.refs[1].x, 10, "split 'Ref.:' / '475681': position of the 'Ref.:' item");
+assert.equal(rr.refs[1].price, 10, "first price after the ref");
+assert.equal(rr.refs[2].price, null, "no price when the next product name follows");
+assert.equal(rr.refs[3].price, 2.5, "'2 ,50 €'");
+assert.equal(rr.refs[4].y, 99, "clamped inside the page");
+assert.deepEqual(rr.skus.map((x) => [x.sku, x.printedPrice, x.pages.join(",")]), [["468536", 199, "1,2"], ["475681", 10, "2"], ["473006", null, "2"], ["474816", 2.5, "2"]], "one row per SKU, first price, pages");
+assert.deepEqual(RF.expandVariants("476347", "/8/9/50"), ["476347", "476348", "476349", "476350"], "variant suffixes replace the end");
+assert.deepEqual(RF.expandVariants("467872", "/474546"), ["467872", "474546"], "full SKUs after the slash");
+const rv = RF.refsFromPages([{ page: 7, items: [it("Ref.: 474947/74/89", 30, 40), it("16 €", 30, 43), it("Ref.:473632/3", 60, 40), it("799 €", 60, 43)] }]);
+assert.deepEqual(rv.refs.map((r) => [r.sku, r.variants.join(","), r.price]), [["474947", "474947,474974,474989", 16], ["473632", "473632,473633", 799]], "one ref (one pin) per caption, all variants");
+assert.deepEqual(rv.skus.map((x) => [x.sku, x.printedPrice]), [["474947", 16], ["474974", 16], ["474989", 16], ["473632", 799], ["473633", 799]], "every variant goes to the list with the printed price");
+const vpFake = { width: 600, height: 800, convertToViewportPoint: (x, y) => [x, 800 - y] };
+assert.deepEqual(RF.itemsFromTextContent({ items: [{ str: "Ref.: 473885", transform: [1, 0, 0, 1, 300, 600] }, { foo: 1 }] }, vpFake), [{ str: "Ref.: 473885", x: 50, y: 25 }], "pdf.js item → % from top-left");
+const FJS = readFileSync(new URL("../public/folhetos.js", import.meta.url), "utf8");
+assert.ok(FJS.includes('id="sk-pdf"') && FJS.includes("Importar referências do PDF") && FJS.includes("placeRefPins") && FJS.includes("itemsFromTextContent(await page.getTextContent(), v1)"), "editor: import button, pins and text layer read with the page images");
+console.log("Referências do PDF OK");
+
 console.log("\n✅ testes folhetos passaram");
