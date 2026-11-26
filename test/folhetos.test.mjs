@@ -29,6 +29,10 @@ assert.equal(F.sanitizeFolheto({ imagePattern: "https://www.homastores.com/a/3.w
 assert.equal(F.findPdfLink('<a class="dl" href="https://catalogo.homa.pt/71760/3381251/pdfs/8ea.pdf?response-content-disposition=attachment%3B&amp;x=1">Baixar PDF</a>', "https://catalogo.homa.pt/p/1"), "https://catalogo.homa.pt/71760/3381251/pdfs/8ea.pdf?response-content-disposition=attachment%3B&x=1");
 assert.equal(F.findPdfLink("<html>sem pdf</html>", "https://x"), null);
 assert.deepEqual(F.sanitizeSkus(["473088", { sku: " 433902 ", printedPrice: "14.99" }, "473088", "", { sku: "x", printedPrice: "abc" }]), [{ sku: "473088", printedPrice: null }, { sku: "433902", printedPrice: 14.99 }, { sku: "x", printedPrice: null }], "product list: trimmed, unique, prices");
+assert.equal(F.normalizePattern("https://development-eu01-deborla.demandware.net/on/demandware.static/-/Sites-Homa_PT-Library/default/v123/7.jpg"), "https://development.homastores.com/on/demandware.static/-/Sites-Homa_PT-Library/default/v123/{n}.jpg", "instance host (not public, fails on phones) → storefront domain");
+assert.equal(F.publicImageUrl("https://production-eu01-deborla.demandware.net/on/demandware.static/x.jpg"), "https://www.homastores.com/on/demandware.static/x.jpg");
+const shs = F.sanitizeFolheto({ pageCount: 1, hotspots: [{ page: 1, sku: "a", shadow: 2 }, { page: 1, sku: "b", shadow: 9 }, { page: 1, type: "area", sku: "c", shadow: 3 }] }).hotspots;
+assert.deepEqual(shs.map((h) => h.shadow), [2, undefined, undefined], "shadow 1–3 on dots only");
 console.log("Sanitize OK");
 
 // ---- hydrate: live SFCC > feed; missing; search URL fallback
@@ -104,6 +108,13 @@ assert.ok(pv.includes('src="data:image/jpeg;base64,1"'));
   assert.ok(b2.includes("· 4 produtos"), "header counts the listed products");
   assert.ok(!b2.includes('id="hfol-natal-p4"'), "no '+' / detail radio for an unpinned product");
   assert.match(b2, /data-item-id="777"[^>]*data-item-index="4"/, "GA4 index continues after the pinned products");
+}
+{ // dots like Shop the Look + per-dot shadow; UI Library arrows
+  const cfgS = { ...cfgR, hotspots: cfgR.hotspots.map((h, k) => (k === 0 ? { ...h, shadow: 3 } : h)) };
+  const hs = renderFolheto(cfgS, { css });
+  assert.ok(hs.includes("#hfol-natal .hfol__h--0{left:20%;top:30%;--hfol-sh:var(--hfol-sh3);--hfol-sh-on:var(--hfol-sh3-on)}"));
+  assert.ok(hs.includes("#hfol-natal:has(#hfol-natal-p1:checked) .hfol__hs--1::after{width:12px;height:12px;box-shadow:var(--hfol-sh-on)}"), "open dot = 12 px (Interactive Dots V2)");
+  assert.ok(css.includes("rgba(117,117,117,.4)") && css.includes("backdrop-filter:blur(2px)"), "Carrousel Controls (Light, Background Blur)");
 }
 delete live.markets.pt["473088"].stock;
 console.log("Render OK");
