@@ -6,8 +6,9 @@
 //     pages / the product picked on a "+"; mobile: one page per swipe (scroll-snap), "see the products of this page"
 //     sheet, product sheet from a "+";
 //   - below: every product of the flyer, filterable by section.
-// No cart: every product leads to its PDP. Tracking: data-ff-list-* on the block, data-item-* only on the real
-// product links (select_item), data-ff-pin on the product radios (opened from a "+").
+// No cart: every product leads to its PDP. Tracking (public/tracking/ff-tracking.js, in GTM): data-ff-list-* on the block,
+// data-item-* only on the real product links (select_item), data-fol-page on each page (fol_page_view) and
+// data-fol-ev on the controls (pin, sheet, tab, nav, index, all, filter → fol_* events).
 // Layout follows the "Folheto Natal 2026" design (desktop Main, Mobile Leitor, Mobile Produtos), minus add to cart.
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -123,13 +124,13 @@ export function renderFolheto(cfg, { css = "", preview = false, imageFor = null 
         return `<span class="hfol__hs ${area ? "hfol__hs--area" : ""} ${cls} hfol__miss" title="${esc(h.sku ? `${h.sku}: não encontrado` : "sem produto")}"></span>`;
       }
       const p = products[h.sku];
-      return `<label class="hfol__hs ${area ? "hfol__hs--area" : ""} ${cls} hfol__hs--${ix(h.sku)}" for="${pr(h.sku)}" title="${esc(p.name)}"><span class="hfol__sr">${esc(L.open(p.name))}</span></label>`;
+      return `<label class="hfol__hs ${area ? "hfol__hs--area" : ""} ${cls} hfol__hs--${ix(h.sku)}" for="${pr(h.sku)}" data-fol-ev="pin" data-fol-src="ponto" title="${esc(p.name)}"><span class="hfol__sr">${esc(L.open(p.name))}</span></label>`;
     }).join("");
     const cnt = onPage[n].length;
-    return `<div class="hfol__slide"><figure class="hfol__page hfol__pg--${n}" aria-label="${esc(L.pageOf(n, N))}">`
+    return `<div class="hfol__slide"><figure class="hfol__page hfol__pg--${n}" data-fol-page="${n}" aria-label="${esc(L.pageOf(n, N))}">`
       + (src ? `<img class="hfol__img" src="${esc(src)}" alt="${esc(`${cfg.title || cfg.name || ""} — ${L.page.toLowerCase()} ${n}`)}"${n > 3 ? ` loading="lazy"` : ""} decoding="async">` : `<span class="hfol__noimg">${esc(L.page)} ${n}</span>`)
       + `${spots}<figcaption class="hfol__num">${n} / ${N}</figcaption></figure>`
-      + (cnt ? `<label class="hfol__cta" for="${P}-m${n}">${esc(L.seeN(cnt))}</label>` : "")
+      + (cnt ? `<label class="hfol__cta" for="${P}-m${n}" data-fol-ev="sheet" data-fol-src="pagina" data-fol-to="${n}">${esc(L.seeN(cnt))}</label>` : "")
       + `</div>`;
   };
 
@@ -141,13 +142,13 @@ export function renderFolheto(cfg, { css = "", preview = false, imageFor = null 
     return `<div class="hfol__spread hfol__sp--${k}${sp.length === 1 ? " hfol__spread--one" : ""}">${sp.map(pageHtml).join("")}</div>`;
   }).join("");
   const navHtml = spreads.map((_, k) => `<span class="hfol__nav hfol__nav--${k}">`
-    + `<label class="hfol__arrow hfol__arrow--prev${k === 0 ? " is-off" : ""}"${k > 0 ? ` for="${P}-s${k - 1}"` : ""} aria-label="${esc(L.prev)}"></label>`
-    + `<label class="hfol__arrow hfol__arrow--next${k === spreads.length - 1 ? " is-off" : ""}"${k < spreads.length - 1 ? ` for="${P}-s${k + 1}"` : ""} aria-label="${esc(L.nextA)}"></label></span>`).join("");
-  const thumbsHtml = spreads.map((sp, k) => `<label class="hfol__th hfol__th--${k}" for="${P}-s${k}" aria-label="${esc(L.pagesOf(label(sp), N))}">${sp.map((n) => `<span>${n}</span>`).join("")}</label>`).join("");
+    + `<label class="hfol__arrow hfol__arrow--prev${k === 0 ? " is-off" : ""}"${k > 0 ? ` for="${P}-s${k - 1}" data-fol-ev="nav" data-fol-src="seta" data-fol-to="${spreads[k - 1][0]}"` : ""} aria-label="${esc(L.prev)}"></label>`
+    + `<label class="hfol__arrow hfol__arrow--next${k === spreads.length - 1 ? " is-off" : ""}"${k < spreads.length - 1 ? ` for="${P}-s${k + 1}" data-fol-ev="nav" data-fol-src="seta" data-fol-to="${spreads[k + 1][0]}"` : ""} aria-label="${esc(L.nextA)}"></label></span>`).join("");
+  const thumbsHtml = spreads.map((sp, k) => `<label class="hfol__th hfol__th--${k}" for="${P}-s${k}" data-fol-ev="nav" data-fol-src="miniatura" data-fol-to="${sp[0]}" aria-label="${esc(L.pagesOf(label(sp), N))}">${sp.map((n) => `<span>${n}</span>`).join("")}</label>`).join("");
   const countHtml = spreads.map((sp, k) => `<span class="hfol__cnt hfol__cnt--${k}">${esc(sp.length === 1 ? L.pageOf(sp[0], N) : L.pagesOf(label(sp), N))}</span>`).join("");
 
   // ------------------------------------------------------------------ side panel: products of the spread / picked product
-  const row = (sku) => { const p = products[sku]; return `<label class="hfol__row" for="${pr(sku)}"><span class="hfol__thumb">${img(p.image)}</span><span class="hfol__row-txt"><span class="hfol__name">${esc(p.name)}</span><span class="hfol__ref">${esc(L.ref)} ${esc(sku)}</span></span>${price(p)}</label>`; };
+  const row = (sku) => { const p = products[sku]; return `<label class="hfol__row" for="${pr(sku)}" data-fol-ev="pin" data-fol-src="lista"><span class="hfol__thumb">${img(p.image)}</span><span class="hfol__row-txt"><span class="hfol__name">${esc(p.name)}</span><span class="hfol__ref">${esc(L.ref)} ${esc(sku)}</span></span>${price(p)}</label>`; };
   const listsHtml = spreads.map((sp, k) => {
     const skus = [...new Set(sp.flatMap((n) => onPage[n]))];
     const picked = skus.map((s) => `#${pr(s)}:checked`).join(",");
@@ -178,15 +179,15 @@ export function renderFolheto(cfg, { css = "", preview = false, imageFor = null 
     const nx = pagesWith.find((m) => m > n);
     const sec = nx && pages[nx - 1].section;
     return `<div class="hfol__sl hfol__sl--${n}">${onPage[n].map(srow).join("")}`
-      + (nx ? `<div class="hfol__nextpg"><span class="hfol__h4">${esc(L.next)}</span><label class="hfol__nextpg-box" for="${P}-m${nx}"><span class="hfol__nextpg-img">${img(imageFor ? imageFor(nx) : pages[nx - 1].src)}</span><span class="hfol__row-txt"><span>${esc(L.page)} ${nx}${sec ? ` · ${esc(sec)}` : ""}</span><span class="hfol__muted">${onPage[nx].length} ${esc(onPage[nx].length === 1 ? L.product : L.products)}</span><u>${esc(L.viewPage)}</u></span></label></div>` : "")
+      + (nx ? `<div class="hfol__nextpg"><span class="hfol__h4">${esc(L.next)}</span><label class="hfol__nextpg-box" for="${P}-m${nx}" data-fol-ev="sheet" data-fol-src="seguinte" data-fol-to="${nx}"><span class="hfol__nextpg-img">${img(imageFor ? imageFor(nx) : pages[nx - 1].src)}</span><span class="hfol__row-txt"><span>${esc(L.page)} ${nx}${sec ? ` · ${esc(sec)}` : ""}</span><span class="hfol__muted">${onPage[nx].length} ${esc(onPage[nx].length === 1 ? L.product : L.products)}</span><u>${esc(L.viewPage)}</u></span></label></div>` : "")
       + `</div>`;
   }).join("");
   const sheetHtml = pagesWith.length ? `<div class="hfol__sheet" role="dialog" aria-label="${esc(L.allTitle)}"><div class="hfol__sheet-head"><label class="hfol__x" for="${P}-mn" aria-label="${esc(L.close)}"></label><div>${pagesWith.map((n) => `<span class="hfol__st hfol__st--${n}">${esc(L.ofPage(n))}</span>`).join("")}<span class="hfol__muted">${esc(cfg.title || cfg.name || "")}</span></div></div>`
-    + `<div class="hfol__tabs"><label class="hfol__tab hfol__tab--p" for="${P}-tp">${esc(L.thisPage)}</label><label class="hfol__tab hfol__tab--a" for="${P}-ta">${esc(L.whole)}</label></div>`
+    + `<div class="hfol__tabs"><label class="hfol__tab hfol__tab--p" for="${P}-tp" data-fol-ev="tab" data-fol-tab="pagina">${esc(L.thisPage)}</label><label class="hfol__tab hfol__tab--a" for="${P}-ta" data-fol-ev="tab" data-fol-tab="folheto">${esc(L.whole)}</label></div>`
     + `<div class="hfol__sheet-body">${sheetLists}<div class="hfol__sall">${all.map(srow).join("")}</div></div></div>` : "";
 
   // ------------------------------------------------------------------ all products (grid + section filter)
-  const chips = sections.length > 1 ? `<div class="hfol__chips"><label class="hfol__chip hfol__chip--0" for="${P}-f0">${esc(L.all)}</label>${sections.map((s, k) => `<label class="hfol__chip hfol__chip--${k + 1}" for="${P}-f${k + 1}">${esc(s)}</label>`).join("")}</div>` : "";
+  const chips = sections.length > 1 ? `<div class="hfol__chips"><label class="hfol__chip hfol__chip--0" for="${P}-f0" data-fol-ev="filter" data-fol-filter="${esc(L.all)}">${esc(L.all)}</label>${sections.map((s, k) => `<label class="hfol__chip hfol__chip--${k + 1}" for="${P}-f${k + 1}" data-fol-ev="filter" data-fol-filter="${esc(s)}">${esc(s)}</label>`).join("")}</div>` : "";
   if (sections.length > 1) {
     rules.push(`${R}:has(#${P}-f0:checked) .hfol__chip--0{background:var(--hfol-text);border-color:var(--hfol-text);color:#fff}`);
     sections.forEach((_, k) => {
@@ -205,11 +206,11 @@ export function renderFolheto(cfg, { css = "", preview = false, imageFor = null 
   const sub = [from && to ? L.valid(from, to) : to ? L.validTo(to) : "", `${N} ${L.pages}`, `${all.length} ${all.length === 1 ? L.product : L.products}`].filter(Boolean).join(" · ");
 
   const media = (q, list) => (list.length ? `\n@media ${q}{\n${list.join("\n")}\n}` : "");
-  return `<div class="hfol" id="${P}" data-fol-id="${esc(cfg.id || id)}" data-ff-list-id="${esc(listIdOf(cfg))}" data-ff-list-name="${esc(listNameOf(cfg))}" aria-label="${esc(L.list)}">`
+  return `<div class="hfol" id="${P}" data-fol-id="${esc(cfg.id || id)}" data-fol-name="${esc(String(cfg.name || cfg.id || "").slice(0, 100))}" data-fol-pages="${N}" data-ff-list-id="${esc(listIdOf(cfg))}" data-ff-list-name="${esc(listNameOf(cfg))}" aria-label="${esc(L.list)}">`
     + `<style>${css.trim()}${rules.length ? "\n" + rules.join("\n") : ""}${media("(min-width:768px)", desk)}${media("(max-width:767px)", mob)}</style>`
     + radios
     + `<div class="hfol__head"><div>${cfg.title ? `<h2 class="hfol__title">${esc(cfg.title)}</h2>` : ""}<p class="hfol__sub">${esc(sub)}</p></div>`
-    + `<div class="hfol__actions">${spreads.length > 1 ? `<label class="hfol__btn hfol__btn--ix" for="${P}-ix">${esc(L.index)}</label>` : ""}${all.length ? `<a class="hfol__btn" href="#${P}-todos">${esc(L.seeAll)}</a>` : ""}</div></div>`
+    + `<div class="hfol__actions">${spreads.length > 1 ? `<label class="hfol__btn hfol__btn--ix" for="${P}-ix" data-fol-ev="index">${esc(L.index)}</label>` : ""}${all.length ? `<a class="hfol__btn" href="#${P}-todos" data-fol-ev="all">${esc(L.seeAll)}</a>` : ""}</div></div>`
     + `<div class="hfol__main"><section class="hfol__viewer" aria-label="${esc(L.list)}"><div class="hfol__stage">${spreads.length > 1 ? navHtml : ""}<div class="hfol__track">${spreadHtml}</div></div>`
     + `${N > 1 ? `<p class="hfol__hint">${esc(L.swipe)} →</p>` : ""}`
     + `${spreads.length > 1 ? `<div class="hfol__bar"><div class="hfol__thumbs">${thumbsHtml}</div>${countHtml}</div>` : ""}</section>`
