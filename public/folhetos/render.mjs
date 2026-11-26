@@ -117,7 +117,7 @@ export function renderFolheto(cfg, { css = "", preview = false, imageFor = null 
     const spots = hotspots.map((h, k) => ({ h, k })).filter(({ h }) => h.page === n).map(({ h, k }) => {
       const cls = `hfol__h--${k}`;
       const area = h.type === "area";
-      rules.push(`${R} .${cls}{left:${h.x}%;top:${h.y}%${area ? `;width:${h.w}%;height:${h.h}%` : ""}}`);
+      rules.push(`${R} .${cls}{left:${h.x}%;top:${h.y}%${area ? `;width:${h.w}%;height:${h.h}%` : h.shadow ? `;--hfol-sh:var(--hfol-sh${h.shadow});--hfol-sh-on:var(--hfol-sh${h.shadow}-on)` : ""}}`);
       if (!ok(h.sku)) {
         if (!preview) return ""; // never ship a hotspot without a product
         return `<span class="hfol__hs ${area ? "hfol__hs--area" : ""} ${cls} hfol__miss" title="${esc(h.sku ? `${h.sku}: não encontrado` : "sem produto")}"></span>`;
@@ -158,8 +158,9 @@ export function renderFolheto(cfg, { css = "", preview = false, imageFor = null 
   const detailsHtml = order.map((sku) => {
     const p = products[sku], i = ix(sku);
     mob.push(`${R}:has(#${pr(sku)}:checked) .hfol__det--${i}{display:block}`);
-    rules.push(`${R}:has(#${pr(sku)}:checked) .hfol__hs--${i}{background:var(--hfol-text);color:#fff;box-shadow:0 0 0 2px #fff,0 0 0 5px var(--hfol-text)}`);
-    rules.push(`${R}:has(#${pr(sku)}:checked) .hfol__hs--area.hfol__hs--${i}{background:rgba(255,255,255,.2);box-shadow:0 0 0 2px #fff,0 0 0 4px var(--hfol-text)}`);
+    rules.push(`${R}:has(#${pr(sku)}:checked) .hfol__hs--${i}{opacity:.8}`);
+    rules.push(`${R}:has(#${pr(sku)}:checked) .hfol__hs--${i}::after{width:12px;height:12px;box-shadow:var(--hfol-sh-on)}`);
+    rules.push(`${R}:has(#${pr(sku)}:checked) .hfol__hs--area.hfol__hs--${i}{opacity:1;background:rgba(255,255,255,.2);box-shadow:0 0 0 2px #fff,0 0 0 4px var(--hfol-text)}`);
     const pgs = pagesOfSku[sku] || [];
     return `<div class="hfol__det hfol__det--${i}"><div class="hfol__det-top"><span class="hfol__muted">${esc(L.onPage)} ${pgs.join(", ")}</span><label class="hfol__x" for="${P}-pn" aria-label="${esc(L.close)}"></label></div>`
       + `<a class="hfol__det-img" href="${esc(p.url)}"${track(p)}>${img(p.image, p.name)}</a>`
