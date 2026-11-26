@@ -55,10 +55,13 @@
     for (var i = 0; i < items.length; i += 200) ecommerce("view_item_list", list, items.slice(i, i + 200));
   }
 
-  // ---- folhetos: own events (no ecommerce), always with the flyer's id, name, page count and list id
+  // ---- folhetos: own events (no ecommerce), always with the flyer's id, name, page count and list id.
+  // Every optional key is sent (undefined when not used): GTM's dataLayer variables keep the last value pushed,
+  // so a fol_page_view after a fol_pin_select would otherwise still carry that item_id / fol_source.
   function fol(event, root, extra) {
     var o = { event: event, fol_id: root.getAttribute("data-fol-id"), fol_name: root.getAttribute("data-fol-name") || undefined,
-      fol_pages: parseInt(root.getAttribute("data-fol-pages"), 10) || undefined, item_list_id: root.getAttribute("data-ff-list-id") || undefined };
+      fol_pages: parseInt(root.getAttribute("data-fol-pages"), 10) || undefined, item_list_id: root.getAttribute("data-ff-list-id") || undefined,
+      page_number: undefined, fol_source: undefined, fol_tab: undefined, fol_filter: undefined, item_id: undefined, item_name: undefined, stl_id: undefined };
     for (var k in extra) if (extra[k] !== undefined && extra[k] !== null && extra[k] !== "") o[k] = extra[k];
     dl(o);
   }
@@ -139,7 +142,7 @@
     if (!p || !list || list.hasAttribute("data-fol-id") || p.__ffLast && Date.now() - p.__ffLast < 1000) return;
     p.__ffLast = Date.now();
     var card = list.querySelector('[data-item-id="' + p.getAttribute("data-ff-pin").replace(/"/g, "") + '"][data-item-name]');
-    dl({ event: "stl_pin_select", stl_id: list.getAttribute("data-stl-id"), item_list_id: list.getAttribute("data-ff-list-id"), item_id: p.getAttribute("data-ff-pin"), item_name: card ? card.getAttribute("data-item-name") : undefined });
+    dl({ event: "stl_pin_select", fol_id: undefined, fol_name: undefined, fol_pages: undefined, page_number: undefined, fol_source: undefined, fol_tab: undefined, fol_filter: undefined, stl_id: list.getAttribute("data-stl-id"), item_list_id: list.getAttribute("data-ff-list-id"), item_id: p.getAttribute("data-ff-pin"), item_name: card ? card.getAttribute("data-item-name") : undefined });
   }
   document.addEventListener("focusin", pin, true);
 
