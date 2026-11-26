@@ -87,6 +87,7 @@ assert.ok(!/hfol__arrow--prev is-off"[^>]*data-fol-ev/.test(body), "disabled arr
 const TJS = readFileSync(new URL("../public/tracking/ff-tracking.js", import.meta.url), "utf8");
 for (const e of ["fol_view", "fol_page_view", "fol_pin_select", "fol_page_products", "fol_navigate", "fol_index", "fol_tab", "fol_filter", "fol_all_products", "data-fol-page", "data-fol-ev", "i += 200"]) assert.ok(TJS.includes(e), `tracking tag: ${e}`);
 assert.ok(TJS.includes('list.hasAttribute("data-fol-id")'), "flyer pins are not sent as stl_pin_select");
+assert.ok(/page_number: undefined, fol_source: undefined, fol_tab: undefined, fol_filter: undefined, item_id: undefined/.test(TJS), "optional keys reset on every flyer event (GTM keeps old dataLayer values)");
 const links = [...body.matchAll(/<a class="([^"]+)" href="([^"]+)"([^>]*)>/g)].filter((m) => m[3].includes("data-item-id"));
 assert.ok(links.length >= 9, "detail (image + button), sheet list, grid card per product");
 assert.match(links.find((m) => m[1].startsWith("hfol__card"))[3], /data-item-id="473088" data-item-name="Almofada SAVOY" data-item-price="14.00" data-item-index="1" data-item-cat="Decoração &gt; Almofadas"/);
