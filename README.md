@@ -199,13 +199,15 @@ Tudo vive em `public/page-builder/engine.mjs` (usado pelo editor, pelas function
 - Elementos, versões, jobs e definições em Netlify Blobs (`pb/*`). O Page Builder é editorial: nada é reportado ao Filo.
 - Código: `netlify/lib/page-builder.mjs`, `public/page-builder/engine.mjs`, `public/page-builder.js`, `public/page-builder/{blocks,capability-test,export-test}.html`; teste: `node test/page-builder.test.mjs`.
 
-## Tracking dos blocos (Shop the Look + Page Builder)
+## Tracking dos blocos (Shop the Look, Page Builder e Folhetos)
 Os blocos vão para o site como Raw HTML (sem JavaScript), por isso o tracking é feito por **uma tag no GTM do site** — `public/tracking/ff-tracking.js`, com instruções, código para copiar e ficheiro para importar no GTM em **`/tracking/`** (link nos ecrãs de exportação). Instala-se uma vez; os módulos e blocos novos são apanhados sozinhos, também nas páginas carregadas pela navegação da PWA.
 - Lê `data-ff-list-id` / `data-ff-list-name` (módulo / bloco de produtos) e `data-item-*` (produtos) e envia, no mesmo formato GA4 que o site já usa no `view_item` (`item_category` "Produtos", `item_category2`/`3` da categoria do feed, `item_list_id`, `item_list_name`, `index`, `price`):
   - `view_item_list` quando a lista fica ≥ 50% visível (uma vez por lista e página);
   - `select_item` ao clicar num produto (cartão, popover do pin, destaque do Color Block);
   - `stl_pin_select` ao abrir um pin (evento próprio).
-- Listas: `Shop the Look - <nome do módulo>` (`stl_<id>`) e `<nome do elemento> - <título do bloco>` (`pb_<elemento>_<bloco>`).
+  - folhetos (eventos próprios, com `fol_id`, `fol_name`, `fol_pages`, `item_list_id`): `fol_view`, `fol_page_view` (`page_number`), `fol_pin_select` (`item_id`, `item_name`, `page_number`, `fol_source` ponto/lista), `fol_page_products`, `fol_navigate` (seta/miniatura), `fol_index`, `fol_tab`, `fol_filter`, `fol_all_products`. O HTML do folheto traz `data-fol-page` em cada página e `data-fol-ev` nos controlos.
+  - listas com mais de 200 produtos vão em vários `view_item_list` (máximo do GA4 por evento).
+- Listas: `Shop the Look - <nome do módulo>` (`stl_<id>`), `<nome do elemento> - <título do bloco>` (`pb_<elemento>_<bloco>`) e `Folheto - <nome>` (`fol_<id>`).
 - Falta confirmar no GTM que a tag GA4 de ecommerce do site dispara em `view_item_list` / `select_item` (instruções na página).
 
 ## Dados ao vivo do SFCC (folhetos)
