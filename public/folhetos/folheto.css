@@ -32,24 +32,29 @@
 .hfol__noimg{position:absolute;inset:0;display:grid;place-items:center;color:var(--hfol-muted);font-size:14px;background:var(--hfol-ph)}
 .hfol__num{position:absolute;right:8px;bottom:8px;z-index:1;font-size:11px;line-height:18px;padding:0 6px;background:rgba(255,255,255,.85);pointer-events:none}
 .hfol__nav{display:none}
-.hfol__arrow{position:absolute;top:50%;margin-top:-22px;width:44px;height:44px;border-radius:50%;border:1px solid var(--hfol-line2);background:#fff;display:grid;place-items:center;z-index:2}
-.hfol__arrow::before{content:"";width:10px;height:10px;border:solid var(--hfol-text);border-width:0 0 2px 2px;transform:translateX(2px) rotate(45deg)}
-.hfol__arrow--prev{left:12px}
-.hfol__arrow--next{right:12px}
-.hfol__arrow--next::before{transform:translateX(-2px) rotate(-135deg)}
-.hfol__arrow:hover{border-color:var(--hfol-text)}
+/* setas: "Carrousel Controls" da UI Library (Figma 9072:8014, Color=Light, State=Background Blur) — ícones Icon/Arrow/Chevron */
+.hfol__arrow{position:absolute;top:50%;margin-top:-22px;width:44px;height:44px;padding:12px;border-radius:43px;border:0;background:rgba(117,117,117,.4) center/16px 16px no-repeat;-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);z-index:2;transition:background-color .15s}
+.hfol__arrow--prev{left:12px;background-image:url('data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none"%3E%3Cpath d="M10.8549 1.64613C10.9015 1.69258 10.9384 1.74775 10.9636 1.8085C10.9888 1.86924 11.0018 1.93436 11.0018 2.00013C11.0018 2.0659 10.9888 2.13102 10.9636 2.19177C10.9384 2.25251 10.9015 2.30769 10.8549 2.35413L5.20789 8.00013L10.8549 13.6461C10.9488 13.74 11.0015 13.8674 11.0015 14.0001C11.0015 14.1329 10.9488 14.2602 10.8549 14.3541C10.761 14.448 10.6337 14.5008 10.5009 14.5008C10.3681 14.5008 10.2408 14.448 10.1469 14.3541L4.14689 8.35413C4.10033 8.30769 4.06339 8.25251 4.03818 8.19176C4.01297 8.13102 4 8.0659 4 8.00013C4 7.93436 4.01297 7.86924 4.03818 7.8085C4.06339 7.74775 4.10033 7.69258 4.14689 7.64613L10.1469 1.64613C10.1933 1.59957 10.2485 1.56263 10.3093 1.53742C10.37 1.51221 10.4351 1.49924 10.5009 1.49924C10.5667 1.49924 10.6318 1.51221 10.6925 1.53742C10.7533 1.56263 10.8084 1.59957 10.8549 1.64613Z" fill-rule="evenodd" clip-rule="evenodd" fill="white"/%3E%3C/svg%3E')}
+.hfol__arrow--next{right:12px;background-image:url('data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none"%3E%3Cpath d="M4.646 1.646C4.69245 1.59944 4.74762 1.56249 4.80837 1.53729C4.86911 1.51208 4.93423 1.49911 5 1.49911C5.06577 1.49911 5.13089 1.51208 5.19163 1.53729C5.25238 1.56249 5.30755 1.59944 5.354 1.646L11.354 7.646C11.4006 7.69245 11.4375 7.74762 11.4627 7.80837C11.4879 7.86911 11.5009 7.93423 11.5009 8C11.5009 8.06577 11.4879 8.13089 11.4627 8.19163C11.4375 8.25238 11.4006 8.30755 11.354 8.354L5.354 14.354C5.26011 14.4479 5.13278 14.5006 5 14.5006C4.86722 14.5006 4.73989 14.4479 4.646 14.354C4.55211 14.2601 4.49937 14.1328 4.49937 14C4.49937 13.8672 4.55211 13.7399 4.646 13.646L10.293 8L4.646 2.354C4.59944 2.30755 4.56249 2.25238 4.53729 2.19163C4.51208 2.13089 4.49911 2.06577 4.49911 2C4.49911 1.93423 4.51208 1.86911 4.53729 1.80837C4.56249 1.74762 4.59944 1.69245 4.646 1.646Z" fill-rule="evenodd" clip-rule="evenodd" fill="white"/%3E%3C/svg%3E')}
+.hfol__arrow:hover{background-color:rgba(117,117,117,.6)}
 .hfol__arrow.is-off{opacity:.35;pointer-events:none}
 .hfol__hint{display:none}
 
 /* "+" no folheto */
-.hfol__hs{position:absolute;z-index:2;width:32px;height:32px;margin:-16px 0 0 -16px;border-radius:50%;background:#fff;color:var(--hfol-text);box-shadow:0 2px 8px rgba(0,0,0,.25);display:grid;place-items:center;transition:transform .15s}
-.hfol__hs::before,.hfol__hs::after{content:"";position:absolute;width:14px;height:3px;border-radius:1px;background:currentColor}
-.hfol__hs::after{transform:rotate(90deg)}
-.hfol__hs:hover{transform:scale(1.08)}
+/* pontos: iguais ao Shop the Look (Figma "Interactive Dots V2"): área de 44 px, ponto branco de 16 px; aberto = 12 px a 80%.
+   A sombra (contraste) escolhe-se por ponto no editor: --hfol-sh / --hfol-sh-on */
+.hfol{--hfol-sh:0 0 8px rgba(24,24,24,.2);--hfol-sh-on:0 0 12px rgba(24,24,24,.32);
+  --hfol-sh1:0 0 10px rgba(24,24,24,.4);--hfol-sh1-on:0 0 12px rgba(24,24,24,.5);
+  --hfol-sh2:0 0 0 1px rgba(24,24,24,.18),0 0 12px rgba(24,24,24,.6);--hfol-sh2-on:0 0 0 1px rgba(24,24,24,.25),0 0 14px rgba(24,24,24,.7);
+  --hfol-sh3:0 0 0 1.5px rgba(24,24,24,.4),0 0 14px rgba(24,24,24,.85);--hfol-sh3-on:0 0 0 1.5px rgba(24,24,24,.5),0 0 16px rgba(24,24,24,.9)}
+.hfol__hs{position:absolute;z-index:2;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;display:grid;place-items:center;transition:opacity .15s}
+.hfol__hs::after{content:"";width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:var(--hfol-sh);transition:width .15s,height .15s,box-shadow .15s}
+.hfol__hs:hover{opacity:.8}
+.hfol__hs:hover::after{width:12px;height:12px;box-shadow:var(--hfol-sh-on)}
 .hfol__hs--area{width:auto;height:auto;margin:0;border-radius:2px;background:transparent;box-shadow:none;transition:background .15s,box-shadow .15s}
-.hfol__hs--area::before,.hfol__hs--area::after{display:none}
-.hfol__hs--area:hover{transform:none;background:rgba(255,255,255,.18);box-shadow:0 0 0 2px #fff,0 0 0 3px rgba(31,31,31,.4)}
-.hfol__miss{background:#d33;color:#fff}
+.hfol__hs--area::after{display:none}
+.hfol__hs--area:hover{opacity:1;background:rgba(255,255,255,.18);box-shadow:0 0 0 2px #fff,0 0 0 3px rgba(31,31,31,.4)}
+.hfol__miss::after{background:#d33}
 .hfol__hs--area.hfol__miss{background:transparent;border:2px dashed #d33}
 
 /* tira de páginas */
@@ -128,8 +133,6 @@
   .hfol__spread,.hfol__spread--one{display:contents}
   .hfol__slide{flex:0 0 100%;scroll-snap-align:start;display:flex;flex-direction:column;gap:12px;padding-bottom:12px}
   .hfol__page{box-shadow:0 6px 24px rgba(0,0,0,.12)}
-  .hfol__hs{width:36px;height:36px;margin:-18px 0 0 -18px}
-  .hfol__hs--area{width:auto;height:auto;margin:0}
   .hfol__cta{display:flex;height:48px;border-radius:8px;background:var(--hfol-text);color:#fff;align-items:center;justify-content:center;font-size:15px;font-weight:600}
   .hfol__hint{display:block;margin:0;padding:8px 16px 0;font-size:12px;color:var(--hfol-muted);text-align:center}
   /* folha do produto (a partir de um "+") */

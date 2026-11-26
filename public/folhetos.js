@@ -25,7 +25,13 @@
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const fmt = (n) => PP.fmt(n, ST.f?.market);
   const hostOk = (p) => { try { const u = new URL(p.replace("{n}", "1")); return u.protocol === "https:" && OK_HOSTS.some((re) => re.test(u.hostname)); } catch { return false; } };
-  const normPattern = (u) => { const v = String(u || "").trim(); return !v || v.includes("{n}") ? v : v.replace(/\/(\d+|n)\.(jpe?g|png|webp)(?=$|[?#])/i, "/{n}.$2"); }; // = folhetos.mjs normalizePattern
+  // = folhetos.mjs normalizePattern: the SFCC instance host (…demandware.net) is not public (fails on phones) → storefront domain
+  const PUBLIC_HOST = { development: "development.homastores.com", staging: "staging.homastores.com", production: "www.homastores.com" };
+  const publicUrl = (u) => String(u || "").replace(/^https:\/\/(development|staging|production)-[a-z0-9]+-[a-z0-9]+\.demandware\.net(?=\/on\/demandware\.static\/)/i, (_, env) => `https://${PUBLIC_HOST[env.toLowerCase()]}`);
+  const normPattern = (u) => { const v = publicUrl(String(u || "").trim()); return !v || v.includes("{n}") ? v : v.replace(/\/(\d+|n)\.(jpe?g|png|webp)(?=$|[?#])/i, "/{n}.$2"); };
+  // "+" contrast presets (= folheto.css --hfol-sh*)
+  const SHADOWS = [[0, "Normal"], [1, "Média"], [2, "Forte"], [3, "Máxima"]];
+  const SHADOW_CSS = ["0 0 8px rgba(24,24,24,.2)", "0 0 10px rgba(24,24,24,.4)", "0 0 0 1px rgba(24,24,24,.18),0 0 12px rgba(24,24,24,.6)", "0 0 0 1.5px rgba(24,24,24,.4),0 0 14px rgba(24,24,24,.85)"];
   const imgFor = (n) => ST.imgs[n] || (ST.f.imagePattern ? ST.f.imagePattern.replaceAll("{n}", String(n)) : "");
   const fmtDate = (s) => (s ? new Date(s).toLocaleString("pt-PT", { dateStyle: "short", timeStyle: "short" }) : "—");
 
@@ -554,6 +560,10 @@
           <div><label>Tipo</label><select id="hs-type"><option value="dot" ${h.type === "dot" ? "selected" : ""}>Ponto “+”</option><option value="area" ${h.type === "area" ? "selected" : ""}>Área clicável</option></select></div>
           <div><label>SKU</label><input id="hs-sku" value="${esc(h.sku)}" placeholder="ex. 473088"></div>
           <div><label>Preço impresso (€)</label><input id="hs-price" type="number" min="0" step="0.01" value="${h.printedPrice ?? ""}" placeholder="para validar"></div>
+          ${h.type === "dot" ? `<div style="grid-column:1/-1"><label>Sombra do ponto (contraste)</label>
+            <div class="row" style="gap:6px;align-items:center">${SHADOWS.map(([v, l]) => `<span class="chip ${(h.shadow || 0) === v ? "on" : ""}" data-sh="${v}" title="${esc(l)}" style="display:inline-flex;align-items:center;gap:6px"><i style="display:inline-block;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:${SHADOW_CSS[v]}"></i>${esc(l)}</span>`).join("")}
+              <a href="#" id="hs-sh-all" class="small">aplicar a todos os pontos</a></div>
+            <p class="small muted" style="margin:4px 0 0">Mais forte em fundos claros, para o ponto branco se destacar.</p></div>` : ""}
         </div>
         <p class="small muted" style="margin:6px 0 0">O preço impresso serve para o alerta “preço no site ≠ impresso”.</p></div>`
       : `<p class="small muted">Clica num hotspot na página para o editar, ou cria um novo (modo ${ST.mode === "dot" ? "ponto" : "área"}).</p>`}
@@ -573,6 +583,8 @@
         changed(main, { tab: true });
       };
       $("#hs-sku").onchange = (e) => setSku(h, e.target.value.trim(), main);
+      $$("[data-sh]", box).forEach((c) => (c.onclick = () => { const v = +c.dataset.sh; if (v) h.shadow = v; else delete h.shadow; changed(main, { tab: true }); }));
+      if ($("#hs-sh-all")) $("#hs-sh-all").onclick = (e) => { e.preventDefault(); let n = 0; for (const x of f.hotspots) if (x.type === "dot") { if (h.shadow) x.shadow = h.shadow; else delete x.shadow; n++; } toast(`Sombra aplicada a ${n} ponto(s)`); changed(main, { tab: true }); };
       $("#hs-price").onchange = (e) => { const v = e.target.value; h.printedPrice = v === "" ? null : Math.round(Number(v) * 100) / 100; changed(main, { stage: false }); };
     }
     PP.mount($("#fol-picker"), {
